@@ -14,7 +14,7 @@ import org.junit.runner.RunWith
 
 /**
  * Reproduit une base créée par la version 0.2.0 (schéma v1, SQL copié de app/schemas/…/1.json),
- * puis l'ouvre avec la version actuelle : la migration automatique 1 → 2 doit conserver chaque article.
+ * puis l'ouvre avec la version actuelle : la migration automatique 1 → 2 → 3 doit conserver chaque article.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationTest {
@@ -58,6 +58,7 @@ class MigrationTest {
             assertEquals("", veste.description)
             assertNull(veste.floorPriceCents)
             assertNull(veste.firstPublishedAt)
+            assertEquals("", veste.vintedUrl) // colonne v3
             assertEquals(1999L, articles[1].costCents)
             // Les nouvelles tables existent et sont vides.
             assertEquals(0, database.photoDao().forArticle(veste.id).size)

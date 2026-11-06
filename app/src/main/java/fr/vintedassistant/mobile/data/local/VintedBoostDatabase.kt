@@ -15,18 +15,23 @@ import androidx.room.RoomDatabase
  * Historique :
  * - v1 (0.2.0) : articles (titre, coût, prix, statut).
  * - v2 (0.3.0) : fiche complète, photos, ventes, journal des publications.
+ * - v3 (0.4.0) : lien de l'annonce Vinted, notifications Vinted reçues.
  */
 @Database(
-    entities = [ArticleEntity::class, PhotoEntity::class, SaleEntity::class, ListingEventEntity::class],
-    version = 2,
+    entities = [
+        ArticleEntity::class, PhotoEntity::class, SaleEntity::class, ListingEventEntity::class,
+        VintedNotificationEntity::class,
+    ],
+    version = 3,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 abstract class VintedBoostDatabase : RoomDatabase() {
     abstract fun articleDao(): ArticleDao
     abstract fun photoDao(): PhotoDao
     abstract fun saleDao(): SaleDao
     abstract fun listingEventDao(): ListingEventDao
+    abstract fun vintedNotificationDao(): VintedNotificationDao
 
     companion object {
         const val FILE_NAME = "vinted_boost.db"

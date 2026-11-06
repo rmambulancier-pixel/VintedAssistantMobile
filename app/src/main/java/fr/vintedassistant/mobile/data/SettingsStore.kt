@@ -17,6 +17,8 @@ data class AppSettings(
     val stagnantDays: Int = 21,
     val priceDropPercent: Int = 10,
     val aiEnabled: Boolean = true,
+    /** Bêta « Vinted intégré » : avertissement lu et accepté. */
+    val betaVintedAccepted: Boolean = false,
 ) {
     val republish get() = RepublishSettings(republishMinAgeDays, republishMaxPerDay)
     val dashboard get() = DashboardSettings(contributionRateBp, stagnantDays, priceDropPercent)
@@ -50,6 +52,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
             .putInt(K_STAGNANT, next.stagnantDays)
             .putInt(K_DROP, next.priceDropPercent)
             .putBoolean(K_AI, next.aiEnabled)
+            .putBoolean(K_BETA, next.betaVintedAccepted)
             .apply()
         state.value = next
     }
@@ -65,6 +68,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
             stagnantDays = prefs.getInt(K_STAGNANT, d.stagnantDays),
             priceDropPercent = prefs.getInt(K_DROP, d.priceDropPercent),
             aiEnabled = prefs.getBoolean(K_AI, d.aiEnabled),
+            betaVintedAccepted = prefs.getBoolean(K_BETA, d.betaVintedAccepted),
         ).sanitized()
     }
 
@@ -78,5 +82,6 @@ class SettingsStore(private val prefs: SharedPreferences) {
         private const val K_STAGNANT = "stagnant_days"
         private const val K_DROP = "price_drop_percent"
         private const val K_AI = "ai_enabled"
+        private const val K_BETA = "beta_vinted_accepted"
     }
 }

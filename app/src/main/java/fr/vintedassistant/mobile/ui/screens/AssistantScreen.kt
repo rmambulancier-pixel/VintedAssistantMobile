@@ -46,11 +46,18 @@ import kotlinx.coroutines.launch
 private val TABS = listOf("Répondre", "Négocier", "Favoris")
 
 @Composable
-fun AssistantScreen(articles: List<Article>?, aiEnabled: Boolean, priceDropPercent: Int, modifier: Modifier) {
+fun AssistantScreen(
+    articles: List<Article>?,
+    aiEnabled: Boolean,
+    priceDropPercent: Int,
+    modifier: Modifier,
+    initialArticleId: Long? = null,
+    initialTab: Int = 0,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var tab by rememberSaveable { mutableStateOf(0) }
-    var selectedId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var tab by rememberSaveable(initialTab, initialArticleId) { mutableStateOf(initialTab) }
+    var selectedId by rememberSaveable(initialArticleId) { mutableStateOf(initialArticleId) }
     var menu by remember { mutableStateOf(false) }
 
     val candidates = articles.orEmpty().filter { it.status.inStock }

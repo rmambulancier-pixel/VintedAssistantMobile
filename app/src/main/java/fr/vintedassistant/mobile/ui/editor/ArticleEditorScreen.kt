@@ -56,6 +56,7 @@ import fr.vintedassistant.mobile.ui.SectionTitle
 import fr.vintedassistant.mobile.ui.container
 import fr.vintedassistant.mobile.ui.copyToClipboard
 import fr.vintedassistant.mobile.ui.sharePhotos
+import fr.vintedassistant.mobile.ui.screens.openVinted
 
 @Composable
 fun ArticleEditorScreen(articleId: Long, sessionKey: String, aiEnabled: Boolean, onClose: () -> Unit) {
@@ -212,6 +213,7 @@ fun ArticleEditorScreen(articleId: Long, sessionKey: String, aiEnabled: Boolean,
             }
             Field("Description", form.description, { v -> vm.edit { it.copy(description = v) } }, singleLine = false, minLines = 5)
             Field("Mots-clés", form.keywords, { v -> vm.edit { it.copy(keywords = v) } }, singleLine = false)
+            Field("Lien de l'annonce Vinted (partage-le depuis Vinted)", form.vintedUrl, { v -> vm.edit { it.copy(vintedUrl = v) } })
 
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Button(onClick = { vm.save() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
@@ -233,6 +235,10 @@ fun ArticleEditorScreen(articleId: Long, sessionKey: String, aiEnabled: Boolean,
                         Text("Copier la description")
                     }
                 }
+                OutlinedButton(
+                    onClick = { openVinted(context, current?.vintedUrl?.takeIf { it.isNotBlank() }) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (current?.vintedUrl.isNullOrBlank()) "Ouvrir Vinted" else "Ouvrir l'annonce dans Vinted") }
                 OutlinedButton(
                     onClick = {
                         val store = context.container().photoStore

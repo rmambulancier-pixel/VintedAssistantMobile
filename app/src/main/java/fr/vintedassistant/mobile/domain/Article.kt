@@ -40,6 +40,7 @@ data class Article(
     val firstPublishedAt: Long? = null,
     val lastPublishedAt: Long? = null,
     val photos: List<String> = emptyList(),
+    val vintedUrl: String = "",
 ) {
     /** Marge brute : prix affiché moins coût d'achat (frais et cotisations non déduits). */
     val marginCents: Long get() = priceCents - costCents
@@ -94,6 +95,7 @@ data class ArticleForm(
     val color: String = "",
     val description: String = "",
     val keywords: String = "",
+    val vintedUrl: String = "",
 )
 
 /** Champs validés de la fiche article. */
@@ -109,6 +111,7 @@ data class ArticleFields(
     val color: String,
     val description: String,
     val keywords: String,
+    val vintedUrl: String = "",
 )
 
 sealed interface FormValidation {
@@ -134,6 +137,10 @@ fun validateArticleForm(form: ArticleForm): FormValidation {
     if (description.length > Article.TEXT_MAX_LENGTH) {
         return FormValidation.Invalid("La description ne doit pas dépasser ${Article.TEXT_MAX_LENGTH} caractères.")
     }
+    val url = form.vintedUrl.trim().let { VintedLinks.extract(it) ?: it }
+    if (url.isNotEmpty() && !VintedLinks.isVintedUrl(url)) {
+        return FormValidation.Invalid("Le lien doit être une adresse Vinted (https://www.vinted.fr/…).")
+    }
     fun short(s: String) = s.trim().take(Article.TITLE_MAX_LENGTH)
     return FormValidation.Valid(
         ArticleFields(
@@ -148,6 +155,7 @@ fun validateArticleForm(form: ArticleForm): FormValidation {
             color = short(form.color),
             description = description,
             keywords = form.keywords.trim().take(Article.TEXT_MAX_LENGTH),
+            vintedUrl = url.take(500),
         )
     )
 }
@@ -165,4 +173,5 @@ fun Article.toForm() = ArticleForm(
     color = color,
     description = description,
     keywords = keywords,
+    vintedUrl = vintedUrl,
 )

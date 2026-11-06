@@ -20,6 +20,10 @@ import fr.vintedassistant.mobile.domain.RepublishPlan
 import fr.vintedassistant.mobile.domain.RepublishPlanner
 import fr.vintedassistant.mobile.domain.Sale
 import fr.vintedassistant.mobile.domain.ShippingStatus
+import fr.vintedassistant.mobile.domain.VintedNotice
+import fr.vintedassistant.mobile.data.importer.ExportReport
+import fr.vintedassistant.mobile.data.importer.VintedExportParser
+import kotlinx.coroutines.withContext
 import fr.vintedassistant.mobile.domain.computeDashboard
 import fr.vintedassistant.mobile.reminders.RepublishReminder
 import kotlinx.coroutines.CancellationException
@@ -55,6 +59,12 @@ class MainViewModel(
 
     val sales: StateFlow<List<Sale>?> =
         repository.sales.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val notices: StateFlow<List<VintedNotice>> =
+        repository.notices.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val _exportReport = MutableStateFlow<ExportReport?>(null)
+    val exportReport: StateFlow<ExportReport?> = _exportReport.asStateFlow()
 
     val dashboard: StateFlow<DashboardStats?> =
         combine(repository.articles, repository.sales, settingsStore.settings, clock) { a, s, st, now ->
@@ -120,6 +130,39 @@ class MainViewModel(
             if (after.reminderEnabled) RepublishReminder.schedule(appContext, after.reminderHour)
             else RepublishReminder.cancel(appContext)
         }
+    }
+
+    fun markNoticeHandled(id: Long) = launchSafely("Action impossible.") { repository.markNoticeHandled(id) }
+
+    fun markAllNoticesHandled() = launchSafely("Action impossible.") { repository.markAllNoticesHandled() }
+
+    fun linkArticle(id: Long, url: String) = launchSafely("Lien non enregistré.") {
+        repository.setVintedUrl(id, url)
+        _message.value = "Lien Vinted associé à l'article."
+    }
+
+    fun markPublishedOrRepublished(article: Article) = launchSafely("Impossible d'enregistrer la publication.") {
+        if (article.firstPublishedAt == null) repository.markPublished(article.id) else repository.markRepublished(article.id)
+        refreshClock()
+    }
+
+    /** Lit l'archive ZIP de l'export RGPD et affiche ce qui a été trouvé, sans rien importer encore. */
+    fun readExport(uri: Uri) = launchSafely("Archive illisible. Choisis le fichier ZIP envoyé par Vinted.") {
+        val report = withContext(Dispatchers.IO) {
+            appContext.contentResolver.openInputStream(uri)?.use { VintedExportParser.parse(it) }
+        } ?: throw IllegalStateException("Fichier introuvable")
+        _exportReport.value = report
+    }
+
+    fun confirmExportImport() = launchSafely("Import impossible.") {
+        val report = _exportReport.value ?: return@launchSafely
+        val added = repository.importFromExport(report.candidates)
+        _exportReport.value = null
+        _message.value = "$added article(s) ajouté(s) en brouillon depuis l'export Vinted. Complète leur coût d'achat."
+    }
+
+    fun dismissExport() {
+        _exportReport.value = null
     }
 
     fun checkAi() = launchSafely("Impossible de vérifier l'IA.") {

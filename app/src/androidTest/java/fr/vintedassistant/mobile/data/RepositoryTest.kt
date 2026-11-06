@@ -11,6 +11,8 @@ import fr.vintedassistant.mobile.domain.ArticleFields
 import fr.vintedassistant.mobile.domain.ArticleStatus
 import fr.vintedassistant.mobile.domain.SaleValidation
 import fr.vintedassistant.mobile.domain.ShippingStatus
+import fr.vintedassistant.mobile.domain.VintedEventKind
+import fr.vintedassistant.mobile.data.importer.ExportCandidate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -147,5 +149,50 @@ class RepositoryTest {
         prefs.edit().putString(LegacyInventoryImporter.KEY_ITEMS, "{pas du json").commit()
         assertTrue(repo.importLegacyIfNeeded() is LegacyInventoryImporter.Outcome.Failed)
         assertEquals(false, prefs.getBoolean(LegacyInventoryImporter.KEY_DONE, false))
+    }
+
+    @Test
+    fun vintedNotificationIsClassifiedLinkedAndDeduplicated() = runBlocking {
+        val id = repo.create(fields())
+        assertTrue(repo.recordNotification("k1", now, "Nouvelle offre", "lea te propose 18 € pour Pull"))
+        assertTrue(!repo.recordNotification("k1", now, "Nouvelle offre", "lea te propose 18 € pour Pull"))
+        val notice = repo.notices.first().single()
+        assertEquals(VintedEventKind.OFFER, notice.kind)
+        assertEquals(id, notice.articleId)
+        assertEquals(1800L, notice.amountCents)
+        repo.markNoticeHandled(notice.id)
+        assertTrue(repo.notices.first().single().handled)
+    }
+
+    @Test
+    fun oldNotificationsArePurged() = runBlocking {
+        repo.recordNotification("old", 0, "Vinted", "ancienne")
+        now += 61L * 24 * 60 * 60 * 1000
+        repo.recordNotification("new", now, "Vinted", "récente")
+        assertEquals(listOf("récente"), repo.notices.first().map { it.text })
+    }
+
+    @Test
+    fun exportImportSkipsExistingArticles() = runBlocking {
+        repo.create(fields(price = 2500))
+        val added = repo.importFromExport(
+            listOf(
+                ExportCandidate("pull", 2500), // même nom (casse ignorée) et même prix : ignoré
+                ExportCandidate("Robe", 1999, brand = "Zara"),
+                ExportCandidate("Robe", 1999),
+            )
+        )
+        assertEquals(1, added)
+        val robe = repo.articles.first().first { it.title == "Robe" }
+        assertEquals(ArticleStatus.DRAFT, robe.status)
+        assertEquals("Zara", robe.brand)
+        assertEquals(0L, robe.costCents)
+    }
+
+    @Test
+    fun vintedLinkIsStored() = runBlocking {
+        val id = repo.create(fields())
+        repo.setVintedUrl(id, "https://www.vinted.fr/items/1-pull")
+        assertEquals("https://www.vinted.fr/items/1-pull", repo.getArticle(id)!!.vintedUrl)
     }
 }

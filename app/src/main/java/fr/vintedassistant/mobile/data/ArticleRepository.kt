@@ -2,6 +2,8 @@ package fr.vintedassistant.mobile.data
 
 import android.net.Uri
 import androidx.room.withTransaction
+import fr.vintedassistant.mobile.data.importer.ExportCandidate
+import fr.vintedassistant.mobile.data.importer.VintedExportParser
 import fr.vintedassistant.mobile.data.files.LabelStore
 import fr.vintedassistant.mobile.data.files.PhotoStore
 import fr.vintedassistant.mobile.data.legacy.LegacyInventoryImporter
@@ -10,6 +12,7 @@ import fr.vintedassistant.mobile.data.local.ListingEventEntity
 import fr.vintedassistant.mobile.data.local.PhotoEntity
 import fr.vintedassistant.mobile.data.local.SaleEntity
 import fr.vintedassistant.mobile.data.local.VintedBoostDatabase
+import fr.vintedassistant.mobile.data.local.VintedNotificationEntity
 import fr.vintedassistant.mobile.data.local.toDomain
 import fr.vintedassistant.mobile.domain.Article
 import fr.vintedassistant.mobile.domain.ArticleFields
@@ -18,6 +21,10 @@ import fr.vintedassistant.mobile.domain.NewArticle
 import fr.vintedassistant.mobile.domain.Sale
 import fr.vintedassistant.mobile.domain.SaleValidation
 import fr.vintedassistant.mobile.domain.ShippingStatus
+import fr.vintedassistant.mobile.domain.DAY_MS
+import fr.vintedassistant.mobile.domain.VintedEventKind
+import fr.vintedassistant.mobile.domain.VintedNotice
+import fr.vintedassistant.mobile.domain.VintedNotificationClassifier
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -37,6 +44,7 @@ class ArticleRepository(
     private val photoDao = db.photoDao()
     private val saleDao = db.saleDao()
     private val eventDao = db.listingEventDao()
+    private val noticeDao = db.vintedNotificationDao()
 
     val articles: Flow<List<Article>> =
         combine(articleDao.observeAll(), photoDao.observeAll()) { articles, photos ->
@@ -45,6 +53,12 @@ class ArticleRepository(
         }
 
     val sales: Flow<List<Sale>> = saleDao.observeAll().map { list -> list.map { it.toDomain() } }
+
+    val notices: Flow<List<VintedNotice>> = noticeDao.observeRecent().map { list ->
+        list.map {
+            VintedNotice(it.id, it.postedAt, it.title, it.text, VintedEventKind.fromName(it.kind), it.articleId, it.amountCents, it.handled)
+        }
+    }
 
     val republishedTimestamps: Flow<List<Long>> = eventDao.observeTimestamps(ListingEventEntity.REPUBLISHED)
 
@@ -250,6 +264,67 @@ class ArticleRepository(
         sale.labelFile?.let { store.delete(it) }
     }
 
+    // ---------- Vinted : lien, notifications, import ----------
+
+    suspend fun setVintedUrl(id: Long, url: String) {
+        val current = articleDao.getById(id) ?: return
+        articleDao.update(current.copy(vintedUrl = url, updatedAt = clock()))
+    }
+
+    /** Enregistre une notification Vinted reçue sur le téléphone. Renvoie false si elle était déjà connue. */
+    suspend fun recordNotification(key: String, postedAt: Long, title: String, text: String): Boolean {
+        val articles = getAllArticles().filter { it.status != ArticleStatus.WITHDRAWN }
+        val content = "$title $text"
+        val inserted = noticeDao.insert(
+            VintedNotificationEntity(
+                notificationKey = key,
+                postedAt = postedAt,
+                title = title.take(300),
+                text = text.take(1000),
+                kind = VintedNotificationClassifier.classify(title, text).name,
+                articleId = VintedNotificationClassifier.matchArticle(content, articles)?.id,
+                amountCents = VintedNotificationClassifier.amountCents(content),
+                handled = false,
+            )
+        )
+        noticeDao.deleteOlderThan(clock() - 60 * DAY_MS)
+        return inserted != -1L
+    }
+
+    suspend fun markNoticeHandled(id: Long) {
+        noticeDao.markHandled(id)
+    }
+
+    suspend fun markAllNoticesHandled() {
+        noticeDao.markAllHandled()
+    }
+
+    /** Crée en brouillon les articles de l'export RGPD absents du stock (même nom et même prix). Renvoie le nombre ajouté. */
+    suspend fun importFromExport(candidates: List<ExportCandidate>): Int = db.withTransaction {
+        val existing = articleDao.getAll().map { VintedExportParser.normalize(it.title) to it.priceCents }.toHashSet()
+        val now = clock()
+        var added = 0
+        for (c in candidates) {
+            val price = c.priceCents ?: 0L
+            if (!existing.add(VintedExportParser.normalize(c.title) to price)) continue
+            articleDao.insert(
+                ArticleEntity(
+                    title = c.title.take(fr.vintedassistant.mobile.domain.Article.TITLE_MAX_LENGTH),
+                    costCents = 0,
+                    priceCents = price,
+                    status = ArticleStatus.DRAFT.label,
+                    createdAt = now,
+                    updatedAt = now,
+                    brand = c.brand.take(120),
+                    size = c.size.take(120),
+                    description = c.description,
+                )
+            )
+            added++
+        }
+        added
+    }
+
     private fun ArticleEntity.withFields(f: ArticleFields) = copy(
         title = f.title,
         costCents = f.costCents,
@@ -262,5 +337,6 @@ class ArticleRepository(
         color = f.color,
         description = f.description,
         keywords = f.keywords,
+        vintedUrl = f.vintedUrl,
     )
 }

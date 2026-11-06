@@ -35,6 +35,8 @@ data class ArticleEntity(
     @ColumnInfo(defaultValue = "") val keywords: String = "",
     @ColumnInfo(name = "first_published_at") val firstPublishedAt: Long? = null,
     @ColumnInfo(name = "last_published_at") val lastPublishedAt: Long? = null,
+    // --- v3 ---
+    @ColumnInfo(name = "vinted_url", defaultValue = "") val vintedUrl: String = "",
 )
 
 @Entity(
@@ -88,6 +90,24 @@ data class SaleEntity(
     val notes: String,
 )
 
+/**
+ * Notification reçue de l'application Vinted sur ce téléphone (v3).
+ * Seules les notifications de Vinted sont enregistrées ; elles sont effacées après 60 jours.
+ */
+@Entity(tableName = "vinted_notifications", indices = [Index(value = ["notification_key"], unique = true), Index("posted_at")])
+data class VintedNotificationEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** Clé unique Android + date : évite d'enregistrer deux fois la même notification. */
+    @ColumnInfo(name = "notification_key") val notificationKey: String,
+    @ColumnInfo(name = "posted_at") val postedAt: Long,
+    val title: String,
+    val text: String,
+    val kind: String,
+    @ColumnInfo(name = "article_id") val articleId: Long?,
+    @ColumnInfo(name = "amount_cents") val amountCents: Long?,
+    val handled: Boolean,
+)
+
 /** Journal des publications, republications et changements de prix. */
 @Entity(
     tableName = "listing_events",
@@ -133,6 +153,7 @@ fun ArticleEntity.toDomain(photos: List<String> = emptyList()) = Article(
     firstPublishedAt = firstPublishedAt,
     lastPublishedAt = lastPublishedAt,
     photos = photos,
+    vintedUrl = vintedUrl,
 )
 
 fun SaleEntity.toDomain() = Sale(

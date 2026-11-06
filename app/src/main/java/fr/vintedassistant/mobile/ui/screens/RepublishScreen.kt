@@ -43,6 +43,7 @@ fun RepublishScreen(
     onRepublished: (Long) -> Unit,
     onApplyPrice: (Long, Long) -> Unit,
     onOpenArticle: (Long) -> Unit,
+    onOpenInVinted: (Long) -> Unit = {},
 ) {
     val context = LocalContext.current
     LazyColumn(modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -99,6 +100,7 @@ fun RepublishScreen(
                 },
                 onDone = { onRepublished(article.id) },
                 onOpen = { onOpenArticle(article.id) },
+                onBeta = if (settings.betaVintedAccepted) ({ onOpenInVinted(article.id) }) else null,
             )
         }
 
@@ -127,7 +129,7 @@ fun RepublishScreen(
 }
 
 @Composable
-private fun PlanCard(article: Article, onPrepare: () -> Unit, onDone: () -> Unit, onOpen: () -> Unit) {
+private fun PlanCard(article: Article, onPrepare: () -> Unit, onDone: () -> Unit, onOpen: () -> Unit, onBeta: (() -> Unit)?) {
     val since = article.lastVisibleAt?.let { ((System.currentTimeMillis() - it) / DAY_MS).toInt() }
     ElevatedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -146,6 +148,9 @@ private fun PlanCard(article: Article, onPrepare: () -> Unit, onDone: () -> Unit
                 OutlinedButton(onClick = onOpen, modifier = Modifier.weight(1f)) { Text("Fiche") }
                 OutlinedButton(onClick = onPrepare, modifier = Modifier.weight(1f)) { Text("Préparer") }
                 Button(onClick = onDone, modifier = Modifier.weight(1.3f)) { Text("C'est republié") }
+            }
+            if (onBeta != null) {
+                OutlinedButton(onClick = onBeta, modifier = Modifier.fillMaxWidth()) { Text("Republier dans Vinted intégré (bêta)") }
             }
         }
     }

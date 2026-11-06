@@ -71,7 +71,7 @@ object RepublishReminder {
         )
         val text = if (count == 1) "1 annonce est à republier aujourd'hui." else "$count annonces sont à republier aujourd'hui."
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_popup_reminder)
+            .setSmallIcon(fr.vintedassistant.mobile.R.drawable.ic_launcher_monochrome)
             .setContentTitle("Republication du jour")
             .setContentText(text)
             .setContentIntent(pending)

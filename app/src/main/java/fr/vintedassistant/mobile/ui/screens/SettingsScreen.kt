@@ -37,6 +37,15 @@ import fr.vintedassistant.mobile.domain.Finance
 import fr.vintedassistant.mobile.reminders.RepublishReminder
 import fr.vintedassistant.mobile.ui.Field
 import fr.vintedassistant.mobile.ui.SectionTitle
+import fr.vintedassistant.mobile.ui.copyToClipboard
+import fr.vintedassistant.mobile.data.importer.ExportReport
+import fr.vintedassistant.mobile.domain.Money
+import fr.vintedassistant.mobile.notifications.VintedNotificationListener
+import android.net.Uri
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.LifecycleResumeEffect
 
 @Composable
 fun SettingsScreen(
@@ -47,8 +56,47 @@ fun SettingsScreen(
     onCheckAi: () -> Unit,
     onDownloadAi: () -> Unit,
     onMessage: (String) -> Unit,
+    exportReport: ExportReport?,
+    onPickExport: (Uri) -> Unit,
+    onConfirmExport: () -> Unit,
+    onDismissExport: () -> Unit,
+    onOpenActivity: () -> Unit,
+    onOpenBeta: () -> Unit,
 ) {
     val context = LocalContext.current
+    val pickExport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onPickExport(uri)
+    }
+    var notificationsOn by remember { mutableStateOf(VintedNotificationListener.isEnabled(context)) }
+    LifecycleResumeEffect(Unit) {
+        notificationsOn = VintedNotificationListener.isEnabled(context)
+        onPauseOrDispose { }
+    }
+    exportReport?.let { report ->
+        AlertDialog(
+            onDismissRequest = onDismissExport,
+            title = { Text("Export Vinted lu") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("${report.candidates.size} article(s) reconnu(s) dans ${report.files.size} fichier(s).")
+                    report.candidates.take(5).forEach { Text("• ${it.title}" + (it.priceCents?.let { p -> " (${Money.formatEuros(p)})" } ?: "")) }
+                    Text(
+                        "Les articles déjà présents (même nom, même prix) ne seront pas dupliqués. " +
+                            "Le format de l'export n'est pas documenté par Vinted : si le résultat est faux, " +
+                            "copie la structure et transmets-la pour adapter l'import.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    TextButton(onClick = { copyToClipboard(context, "Structure de l'export", report.structureText()) }) {
+                        Text("Copier la structure (sans tes données)")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onConfirmExport, enabled = report.candidates.isNotEmpty()) { Text("Importer") }
+            },
+            dismissButton = { TextButton(onClick = onDismissExport) { Text("Annuler") } },
+        )
+    }
     LaunchedEffect(Unit) { onCheckAi() }
 
     var rate by rememberSaveable { mutableStateOf(Finance.formatRate(settings.contributionRateBp).removeSuffix(" %")) }
@@ -72,6 +120,27 @@ fun SettingsScreen(
         modifier.verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        SectionTitle("Vinted")
+        Text(
+            if (notificationsOn) "Lecture des notifications Vinted : activée." else "Lecture des notifications Vinted : désactivée.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { openNotificationAccess(context) }, modifier = Modifier.weight(1f)) {
+                Text(if (notificationsOn) "Gérer l'accès" else "Autoriser")
+            }
+            OutlinedButton(onClick = onOpenActivity, modifier = Modifier.weight(1f)) { Text("Activité Vinted") }
+        }
+        OutlinedButton(onClick = { pickExport.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) {
+            Text("Importer mon export de données Vinted (ZIP)")
+        }
+        Text(
+            "Demande l'export sur vinted.fr : Mes paramètres, Paramètres de confidentialité, Gérer les données du compte. " +
+                "Vinted l'envoie par e-mail, parfois après plusieurs jours.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Button(onClick = onOpenBeta, modifier = Modifier.fillMaxWidth()) { Text("Vinted intégré (bêta)") }
+
         SectionTitle("Finances")
         Field("Taux de cotisations sociales (%)", rate, { rate = it }, decimal = true)
         Text(
@@ -157,9 +226,9 @@ fun SettingsScreen(
 
         SectionTitle("À propos")
         Text(
-            "Vinted Assistant 0.3.0. Toutes les données restent sur ce téléphone. " +
-                "L'application ne se connecte pas à Vinted et n'y agit jamais à ta place : " +
-                "elle prépare, tu publies.",
+            "Vinted Assistant 0.4.0. Toutes les données restent sur ce téléphone. " +
+                "L'application ne se connecte pas à ton compte Vinted et n'y agit jamais seule : " +
+                "elle prépare, tu publies. Le module bêta n'agit que dans la page que tu ouvres, à ta demande.",
             style = MaterialTheme.typography.bodySmall,
         )
         Spacer(Modifier.height(32.dp))

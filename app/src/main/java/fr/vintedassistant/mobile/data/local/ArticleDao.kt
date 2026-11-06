@@ -88,3 +88,21 @@ interface ListingEventDao {
     @Query("DELETE FROM listing_events WHERE article_id = :articleId")
     suspend fun deleteForArticle(articleId: Long): Int
 }
+
+@Dao
+interface VintedNotificationDao {
+    @Query("SELECT * FROM vinted_notifications ORDER BY posted_at DESC LIMIT 300")
+    fun observeRecent(): Flow<List<VintedNotificationEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(notification: VintedNotificationEntity): Long
+
+    @Query("UPDATE vinted_notifications SET handled = 1 WHERE id = :id")
+    suspend fun markHandled(id: Long): Int
+
+    @Query("UPDATE vinted_notifications SET handled = 1")
+    suspend fun markAllHandled(): Int
+
+    @Query("DELETE FROM vinted_notifications WHERE posted_at < :before")
+    suspend fun deleteOlderThan(before: Long): Int
+}
