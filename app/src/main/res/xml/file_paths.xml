@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Seuls ces deux dossiers privés peuvent être partagés vers une autre application. -->
+<paths>
+    <files-path name="photos" path="photos/" />
+    <files-path name="labels" path="labels/" />
+</paths>
