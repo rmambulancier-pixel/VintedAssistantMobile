@@ -62,10 +62,13 @@ object VintedPageScripts {
     """.trimIndent()
 
     /** evaluateJavascript renvoie la valeur encodée en JSON (une chaîne entre guillemets) : on la décode. */
-    fun decode(result: String?): String? = try {
-        (JSONTokener(result ?: return null).nextValue() as? String)
-    } catch (e: Exception) {
-        null
+    fun decode(result: String?): String? {
+        if (result == null) return null
+        return try {
+            JSONTokener(result).nextValue() as? String
+        } catch (e: Exception) {
+            null
+        }
     }
 
     /** Résumé lisible du remplissage. */
