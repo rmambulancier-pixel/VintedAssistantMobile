@@ -16,6 +16,16 @@ android {
         versionName = "0.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+    // Clé de débogage fixe, versionnée : chaque APK de test a la même signature et
+    // s'installe par-dessus la précédente sans perdre les données. Ne sert qu'aux builds de test.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("keystore/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
     buildFeatures { compose = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
