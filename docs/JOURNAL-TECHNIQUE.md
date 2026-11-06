@@ -26,7 +26,34 @@ Corrections :
 Versions inchangées à ce stade (AGP 8.13.0, Kotlin 2.2.20, Compose BOM 2025.10.00) :
 on obtient d'abord un build vert, la mise à jour des versions fera l'objet d'un commit séparé.
 
+Résultat : build vert sur GitHub Actions le 6 novembre 2026, première APK produite.
+
+## Étape B : base Room et reprise des données (version 0.2.0)
+
+- Room 2.8.4 + KSP 2.2.20-2.0.4. Base `vinted_boost.db`, table `articles`, schéma v1
+  versionné dans `app/schemas` (sert de référence pour écrire et tester les migrations).
+- Montants stockés en **centimes** (`Long`) : plus d'erreurs d'arrondi des `Double`.
+- Reprise des articles de la v0.1 (`LegacyInventoryImporter`) :
+  - une seule fois, marquée par `legacy_imported_to_room_v1` ;
+  - idempotente (mêmes identifiants, insertion qui ignore les doublons) ;
+  - l'ancienne copie dans les SharedPreferences n'est **pas** effacée ;
+  - JSON illisible : rien n'est marqué comme fait, message affiché, données conservées.
+- Règle : jamais de migration destructive (`fallbackToDestructiveMigration` interdit).
+- Écran branché sur un ViewModel : saisie conservée à la rotation, confirmation avant suppression.
+- Tests unitaires : montants (saisie, affichage, débordement), validation, lecture du format v0.1.
+
+Non couvert par les tests automatiques à ce stade (pas d'émulateur dans la CI) :
+requêtes Room réelles et import de bout en bout. À vérifier sur le Pixel avec la recette ci-dessous.
+
+### Recette sur le téléphone (v0.1 vers v0.2)
+
+1. Avec la v0.1 installée, saisir deux articles (dont un avec centimes, ex. 19,99).
+2. Installer la v0.2 **par-dessus**, sans désinstaller.
+3. Attendu : message « 2 article(s) repris », mêmes montants, marge totale identique.
+4. Fermer et rouvrir l'application : pas de nouveau message, pas de doublon.
+5. Ajouter, supprimer (avec confirmation), tourner l'écran pendant la saisie.
+6. Redémarrer le téléphone : les données sont toujours là.
+
 ## Étapes suivantes
 
-- Étape B : passage du stockage SharedPreferences à Room, avec reprise des articles existants.
-- Puis lots 2 à 7 du rapport d'audit.
+- Lot 2 du rapport d'audit : fiche article complète (photos, catégorie, état, frais) et finances.
