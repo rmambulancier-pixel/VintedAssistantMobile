@@ -18,7 +18,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+}
+// kotlinOptions est une erreur depuis Kotlin 2.2 : on passe par compilerOptions.
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.10.00"))
