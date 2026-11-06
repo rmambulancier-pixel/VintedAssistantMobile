@@ -14,6 +14,8 @@ import fr.vintedassistant.mobile.domain.ShippingStatus
 import fr.vintedassistant.mobile.domain.VintedEventKind
 import fr.vintedassistant.mobile.data.importer.ExportCandidate
 import fr.vintedassistant.mobile.data.importer.ImportedListing
+import fr.vintedassistant.mobile.data.importer.ParsedOrder
+import fr.vintedassistant.mobile.data.importer.ParsedOrderLine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -261,5 +263,40 @@ class RepositoryTest {
         assertEquals(1, report.salesCreated)
         assertEquals(VintedEventKind.MESSAGE, repo.notices.first().single().kind)
         assertEquals(0, repo.cleanUpImportedData().salesCreated) // idempotent
+    }
+
+    @Test
+    fun purchaseOrderLinksCostsAndCreatesDrafts() = runBlocking {
+        val purchases = PurchaseRepository(db, photoStore = null, clock = { now })
+        val order = ParsedOrder(
+            "NH-1", null,
+            listOf(ParsedOrderLine("Bracelet trèfle", 120, 3, "", ""), ParsedOrderLine("Collier tennis", 240, 1, "", "")),
+            shippingCents = 480, feesCents = 0, totalCents = null, url = "",
+        )
+        val saved = purchases.saveOrder("Nihaojewelry", order, downloadImages = false)
+        assertTrue(saved.created)
+        assertTrue(!purchases.saveOrder("Nihaojewelry", order, downloadImages = false).created) // pas de doublon
+
+        val items = purchases.orders.first().single().items
+        val bracelet = items.first { it.name == "Bracelet trèfle" }
+        assertEquals(216L, bracelet.landedUnitCents)
+
+        // Fiche Vinted existante, vendue sans date : le coût se reporte sur la vente importée.
+        val listing = ImportedListing(9, "https://www.vinted.fr/items/9-bracelet", "Bracelet", 600)
+        val articleId = repo.upsertImported(listing, sold = true).articleId
+        purchases.link(articleId, bracelet.id)
+        assertEquals(216L, repo.getArticle(articleId)!!.costCents)
+        assertEquals(216L, repo.sales.first().single().costCents)
+        assertEquals(1, purchases.orders.first().single().items.first { it.id == bracelet.id }.linkedCount)
+
+        val draftId = purchases.createDraft(bracelet.id)
+        val draft = repo.getArticle(draftId)!!
+        assertEquals(ArticleStatus.DRAFT, draft.status)
+        assertEquals(216L, draft.costCents)
+        assertEquals(2, purchases.orders.first().single().items.first { it.id == bracelet.id }.linkedCount)
+
+        purchases.deleteOrder(saved.orderId)
+        assertEquals(216L, repo.getArticle(articleId)!!.costCents) // coût conservé
+        assertTrue(purchases.orders.first().isEmpty())
     }
 }

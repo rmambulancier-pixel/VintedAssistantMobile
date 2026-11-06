@@ -41,11 +41,16 @@ private enum class StockFilter(val label: String, val accepts: (Article) -> Bool
 }
 
 @Composable
-fun StockScreen(articles: List<Article>?, modifier: Modifier, onOpen: (Long) -> Unit) {
+fun StockScreen(articles: List<Article>?, modifier: Modifier, onOpen: (Long) -> Unit, onOpenPurchases: () -> Unit = {}) {
     var filter by rememberSaveable { mutableStateOf(StockFilter.IN_STOCK) }
     var query by rememberSaveable { mutableStateOf("") }
 
     LazyColumn(modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            androidx.compose.material3.OutlinedButton(onClick = onOpenPurchases, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Text("Achats fournisseur et coûts d'achat")
+            }
+        }
         item {
             OutlinedTextField(
                 value = query, onValueChange = { query = it },

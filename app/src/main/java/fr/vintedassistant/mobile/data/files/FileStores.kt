@@ -180,8 +180,10 @@ class LabelStore(private val context: Context) {
 object ImageDownloader {
     private const val MAX_BYTES = 10L * 1024 * 1024
 
-    suspend fun download(url: String): ByteArray = withContext(Dispatchers.IO) {
-        if (!fr.vintedassistant.mobile.data.importer.PageImport.isAllowedImage(url)) throw IOException("Adresse d'image refusée")
+    /** [anyHttps] : image relevée sur la page d'un fournisseur (hôte non connu à l'avance), https obligatoire. */
+    suspend fun download(url: String, anyHttps: Boolean = false): ByteArray = withContext(Dispatchers.IO) {
+        val allowed = if (anyHttps) url.startsWith("https://") else fr.vintedassistant.mobile.data.importer.PageImport.isAllowedImage(url)
+        if (!allowed) throw IOException("Adresse d'image refusée")
         val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
         connection.connectTimeout = 15_000
         connection.readTimeout = 20_000

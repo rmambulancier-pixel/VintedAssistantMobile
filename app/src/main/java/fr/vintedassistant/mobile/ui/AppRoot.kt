@@ -56,6 +56,8 @@ import fr.vintedassistant.mobile.ui.screens.SalesScreen
 import fr.vintedassistant.mobile.ui.screens.SettingsScreen
 import fr.vintedassistant.mobile.ui.screens.StockScreen
 import fr.vintedassistant.mobile.ui.vinted.VintedWebScreen
+import fr.vintedassistant.mobile.ui.purchases.PurchasesScreen
+import fr.vintedassistant.mobile.ui.purchases.SupplierWebScreen
 
 enum class Tab(val label: String, val icon: ImageVector) {
     HOME("Accueil", Icons.Filled.Home),
@@ -66,7 +68,10 @@ enum class Tab(val label: String, val icon: ImageVector) {
 }
 
 /** Écrans affichés par-dessus les onglets. */
-private enum class Overlay(val title: String) { NONE(""), SETTINGS("Réglages"), ACTIVITY("Activité Vinted"), VINTED("Vinted intégré (bêta)") }
+private enum class Overlay(val title: String) {
+    NONE(""), SETTINGS("Réglages"), ACTIVITY("Activité Vinted"), VINTED("Vinted intégré (bêta)"),
+    PURCHASES("Achats fournisseur"), SUPPLIER("Nihaojewelry"),
+}
 
 /**
  * Navigation simple par état : 5 onglets, la fiche article et des écrans par-dessus.
@@ -142,9 +147,11 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
 
     val overlay = Overlay.entries[overlayIndex]
     fun close() {
-        overlayIndex = Overlay.NONE.ordinal
+        overlayIndex = if (overlay == Overlay.SUPPLIER) Overlay.PURCHASES.ordinal else Overlay.NONE.ordinal
     }
-    BackHandler(enabled = overlay != Overlay.NONE && overlay != Overlay.VINTED) { close() }
+    BackHandler(enabled = overlay != Overlay.NONE && overlay != Overlay.VINTED && overlay != Overlay.SUPPLIER) {
+        overlayIndex = if (overlay == Overlay.SUPPLIER) Overlay.PURCHASES.ordinal else Overlay.NONE.ordinal
+    }
     val tab = Tab.entries[tabIndex]
     val unread = notices.count { !it.handled }
 
@@ -225,6 +232,14 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                     close()
                 },
             )
+            Overlay.PURCHASES -> PurchasesScreen(
+                articles = articles,
+                modifier = modifier,
+                onOpenSupplier = { overlayIndex = Overlay.SUPPLIER.ordinal },
+                onOpenArticle = { close(); openEditor(it) },
+                onMessage = vm::show,
+            )
+            Overlay.SUPPLIER -> SupplierWebScreen(modifier = modifier, onClose = { overlayIndex = Overlay.PURCHASES.ordinal })
             Overlay.VINTED -> VintedWebScreen(
                 articles = articles,
                 initialArticleId = vintedArticle,
@@ -244,7 +259,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                     modifier = modifier,
                     onOpenArticle = ::openEditor,
                 )
-                Tab.STOCK -> StockScreen(articles, modifier, onOpen = ::openEditor)
+                Tab.STOCK -> StockScreen(articles, modifier, onOpen = ::openEditor, onOpenPurchases = { overlayIndex = Overlay.PURCHASES.ordinal })
                 Tab.REPUBLISH -> RepublishScreen(
                     plan = plan,
                     stagnant = dashboard?.stagnant.orEmpty(),

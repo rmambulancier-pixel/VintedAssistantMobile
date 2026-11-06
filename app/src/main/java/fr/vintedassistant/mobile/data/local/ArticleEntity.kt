@@ -40,6 +40,9 @@ data class ArticleEntity(
     // --- v4 ---
     @ColumnInfo(name = "favorites_count") val favoritesCount: Int? = null,
     @ColumnInfo(name = "views_count") val viewsCount: Int? = null,
+    // --- v6 ---
+    /** Produit acheté (module Achats) dont vient cet article ; fixe son coût d'achat. */
+    @ColumnInfo(name = "purchase_item_id") val purchaseItemId: Long? = null,
 )
 
 @Entity(
@@ -111,6 +114,38 @@ data class VintedNotificationEntity(
     @ColumnInfo(name = "article_id") val articleId: Long?,
     @ColumnInfo(name = "amount_cents") val amountCents: Long?,
     val handled: Boolean,
+)
+
+/** Commande passée chez un fournisseur (v6). */
+@Entity(tableName = "purchase_orders", indices = [Index(value = ["supplier", "order_ref"], unique = true)])
+data class PurchaseOrderEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val supplier: String,
+    @ColumnInfo(name = "order_ref") val orderRef: String,
+    @ColumnInfo(name = "ordered_at") val orderedAt: Long,
+    @ColumnInfo(name = "items_total_cents") val itemsTotalCents: Long,
+    @ColumnInfo(name = "shipping_cents") val shippingCents: Long,
+    @ColumnInfo(name = "fees_cents") val feesCents: Long,
+    val url: String,
+    @ColumnInfo(name = "imported_at") val importedAt: Long,
+)
+
+/** Produit d'une commande fournisseur, avec son coût de revient unitaire (v6). */
+@Entity(
+    tableName = "purchase_items",
+    foreignKeys = [ForeignKey(entity = PurchaseOrderEntity::class, parentColumns = ["id"], childColumns = ["order_id"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("order_id")],
+)
+data class PurchaseItemEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "order_id") val orderId: Long,
+    val name: String,
+    @ColumnInfo(name = "image_file") val imageFile: String?,
+    @ColumnInfo(name = "image_url") val imageUrl: String,
+    @ColumnInfo(name = "product_url") val productUrl: String,
+    @ColumnInfo(name = "unit_price_cents") val unitPriceCents: Long,
+    val quantity: Int,
+    @ColumnInfo(name = "landed_unit_cents") val landedUnitCents: Long,
 )
 
 /** Journal des publications, republications et changements de prix. */

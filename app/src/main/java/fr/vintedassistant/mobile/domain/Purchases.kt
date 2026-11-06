@@ -1,0 +1,57 @@
+package fr.vintedassistant.mobile.domain
+
+import java.math.BigDecimal
+import java.math.RoundingMode
+
+/** Ligne de commande fournisseur : prix unitaire payé et quantité. */
+data class PurchaseLine(val unitPriceCents: Long, val quantity: Int)
+
+/** Produit acheté, avec son coût de revient unitaire (prix + part des frais) et le nombre déjà rattaché à des fiches. */
+data class PurchaseItem(
+    val id: Long,
+    val orderId: Long,
+    val name: String,
+    val imageFile: String?,
+    val unitPriceCents: Long,
+    val quantity: Int,
+    val landedUnitCents: Long,
+    val linkedCount: Int,
+) {
+    val remaining: Int get() = (quantity - linkedCount).coerceAtLeast(0)
+}
+
+data class PurchaseOrder(
+    val id: Long,
+    val supplier: String,
+    val orderRef: String,
+    val orderedAt: Long,
+    val itemsTotalCents: Long,
+    val shippingCents: Long,
+    val feesCents: Long,
+    val items: List<PurchaseItem>,
+) {
+    val totalCents: Long get() = itemsTotalCents + shippingCents + feesCents
+}
+
+object LandedCost {
+    /**
+     * Coût de revient unitaire de chaque ligne : prix unitaire + part des frais (port, service, taxes)
+     * répartie au prorata de la valeur de la ligne. Si toutes les lignes valent 0, répartition par pièce.
+     */
+    fun allocate(lines: List<PurchaseLine>, extraCents: Long): List<Long> {
+        val units = lines.sumOf { it.quantity.coerceAtLeast(1).toLong() }
+        val value = lines.sumOf { it.unitPriceCents * it.quantity.coerceAtLeast(1) }
+        return lines.map { line ->
+            val qty = line.quantity.coerceAtLeast(1)
+            val shareOfLine = when {
+                extraCents <= 0 -> BigDecimal.ZERO
+                value > 0 -> BigDecimal.valueOf(extraCents).multiply(BigDecimal.valueOf(line.unitPriceCents * qty))
+                    .divide(BigDecimal.valueOf(value), 6, RoundingMode.HALF_UP)
+                else -> BigDecimal.valueOf(extraCents).multiply(BigDecimal.valueOf(qty.toLong()))
+                    .divide(BigDecimal.valueOf(units), 6, RoundingMode.HALF_UP)
+            }
+            val perUnit = shareOfLine.divide(BigDecimal.valueOf(qty.toLong()), 0, RoundingMode.HALF_UP).toLong()
+            line.unitPriceCents + perUnit
+        }
+    }
+}

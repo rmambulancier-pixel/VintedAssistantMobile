@@ -34,6 +34,8 @@ class AppContainer(context: Context) {
     val settingsStore = SettingsStore(context.getSharedPreferences(SettingsStore.PREFS_NAME, Context.MODE_PRIVATE))
     val assistant = ListingAssistant(context)
 
+    val purchaseRepository = fr.vintedassistant.mobile.data.PurchaseRepository(database, photoStore)
+
     val articleRepository = ArticleRepository(
         db = database,
         importer = LegacyInventoryImporter(legacyPrefs, database.articleDao()),

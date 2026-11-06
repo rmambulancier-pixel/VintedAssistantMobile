@@ -28,6 +28,12 @@ interface ArticleDao {
     @Update
     suspend fun update(article: ArticleEntity): Int
 
+    @Query("SELECT * FROM articles WHERE purchase_item_id = :itemId")
+    suspend fun linkedToPurchase(itemId: Long): List<ArticleEntity>
+
+    @Query("SELECT purchase_item_id AS itemId, COUNT(*) AS count FROM articles WHERE purchase_item_id IS NOT NULL GROUP BY purchase_item_id")
+    fun observePurchaseLinks(): Flow<List<PurchaseLinkCount>>
+
     @Query("DELETE FROM articles WHERE id = :id")
     suspend fun deleteById(id: Long): Int
 }
@@ -121,4 +127,36 @@ interface VintedNotificationDao {
 
     @Query("DELETE FROM vinted_notifications WHERE posted_at < :before")
     suspend fun deleteOlderThan(before: Long): Int
+}
+
+data class PurchaseLinkCount(val itemId: Long, val count: Int)
+
+@Dao
+interface PurchaseDao {
+    @Query("SELECT * FROM purchase_orders ORDER BY ordered_at DESC, id DESC")
+    fun observeOrders(): Flow<List<PurchaseOrderEntity>>
+
+    @Query("SELECT * FROM purchase_items ORDER BY order_id, id")
+    fun observeItems(): Flow<List<PurchaseItemEntity>>
+
+    @Query("SELECT * FROM purchase_orders WHERE supplier = :supplier AND order_ref = :ref LIMIT 1")
+    suspend fun findOrder(supplier: String, ref: String): PurchaseOrderEntity?
+
+    @Query("SELECT * FROM purchase_items WHERE id = :id")
+    suspend fun getItem(id: Long): PurchaseItemEntity?
+
+    @Query("SELECT * FROM purchase_items WHERE order_id = :orderId")
+    suspend fun itemsOf(orderId: Long): List<PurchaseItemEntity>
+
+    @Insert
+    suspend fun insertOrder(order: PurchaseOrderEntity): Long
+
+    @Insert
+    suspend fun insertItem(item: PurchaseItemEntity): Long
+
+    @Update
+    suspend fun updateItem(item: PurchaseItemEntity): Int
+
+    @Query("DELETE FROM purchase_orders WHERE id = :id")
+    suspend fun deleteOrder(id: Long): Int
 }

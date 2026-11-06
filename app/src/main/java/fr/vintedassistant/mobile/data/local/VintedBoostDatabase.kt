@@ -18,17 +18,19 @@ import androidx.room.RoomDatabase
  * - v3 (0.4.0) : lien de l'annonce Vinted, notifications Vinted reçues.
  * - v4 (0.5.0) : favoris et vues relevés sur Vinted.
  * - v5 (0.6.0) : ventes importées sans date connue.
+ * - v6 (0.7.0) : achats fournisseur et coût de revient.
  */
 @Database(
     entities = [
         ArticleEntity::class, PhotoEntity::class, SaleEntity::class, ListingEventEntity::class,
-        VintedNotificationEntity::class,
+        VintedNotificationEntity::class, PurchaseOrderEntity::class, PurchaseItemEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
     autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5),
+        AutoMigration(from = 5, to = 6),
     ],
 )
 abstract class VintedBoostDatabase : RoomDatabase() {
@@ -37,6 +39,7 @@ abstract class VintedBoostDatabase : RoomDatabase() {
     abstract fun saleDao(): SaleDao
     abstract fun listingEventDao(): ListingEventDao
     abstract fun vintedNotificationDao(): VintedNotificationDao
+    abstract fun purchaseDao(): PurchaseDao
 
     companion object {
         const val FILE_NAME = "vinted_boost.db"
