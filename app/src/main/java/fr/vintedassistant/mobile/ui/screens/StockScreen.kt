@@ -102,7 +102,14 @@ fun ArticleRow(article: Article, trailing: (@Composable () -> Unit)? = null, onC
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (article.marginCents >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                 )
-                Text(article.status.label, style = MaterialTheme.typography.labelSmall)
+                val stats = listOfNotNull(
+                    article.favoritesCount?.let { "$it favori(s)" },
+                    article.viewsCount?.let { "$it vue(s)" },
+                ).joinToString(" • ")
+                Text(
+                    article.status.label + if (stats.isNotEmpty()) " • $stats" else "",
+                    style = MaterialTheme.typography.labelSmall,
+                )
             }
             trailing?.invoke()
         }

@@ -22,6 +22,7 @@ object RepublishPlanner {
     /**
      * Plan du jour : articles en ligne dont la dernière mise en avant date d'au moins
      * [RepublishSettings.minAgeDays] jours, les plus anciens d'abord, dans la limite du quota restant.
+     * Date inconnue (annonce importée depuis Vinted) : considérée comme ancienne, donc prioritaire.
      */
     fun plan(
         articles: List<Article>,
@@ -34,8 +35,8 @@ object RepublishPlanner {
         val doneToday = republishedTimestamps.count { it >= dayStart }
         val quota = (settings.maxPerDay - doneToday).coerceAtLeast(0)
         val threshold = now - settings.minAgeDays.toLong() * DAY_MS
-        val online = articles.filter { it.status == ArticleStatus.ONLINE && it.lastVisibleAt != null }
-        val eligible = online.filter { it.lastVisibleAt!! <= threshold }.sortedBy { it.lastVisibleAt }
+        val online = articles.filter { it.status == ArticleStatus.ONLINE }
+        val eligible = online.filter { (it.lastVisibleAt ?: 0L) <= threshold }.sortedBy { it.lastVisibleAt ?: 0L }
         return RepublishPlan(
             today = eligible.take(quota),
             doneToday = doneToday,

@@ -41,6 +41,9 @@ data class Article(
     val lastPublishedAt: Long? = null,
     val photos: List<String> = emptyList(),
     val vintedUrl: String = "",
+    /** Relevés sur Vinted lors du dernier import (null si inconnus). */
+    val favoritesCount: Int? = null,
+    val viewsCount: Int? = null,
 ) {
     /** Marge brute : prix affiché moins coût d'achat (frais et cotisations non déduits). */
     val marginCents: Long get() = priceCents - costCents

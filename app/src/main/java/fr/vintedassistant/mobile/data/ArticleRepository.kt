@@ -3,6 +3,9 @@ package fr.vintedassistant.mobile.data
 import android.net.Uri
 import androidx.room.withTransaction
 import fr.vintedassistant.mobile.data.importer.ExportCandidate
+import fr.vintedassistant.mobile.data.importer.ImportedListing
+import fr.vintedassistant.mobile.data.files.ImageDownloader
+import fr.vintedassistant.mobile.domain.VintedLinks
 import fr.vintedassistant.mobile.data.importer.VintedExportParser
 import fr.vintedassistant.mobile.data.files.LabelStore
 import fr.vintedassistant.mobile.data.files.PhotoStore
@@ -262,6 +265,90 @@ class ArticleRepository(
             throw e
         }
         sale.labelFile?.let { store.delete(it) }
+    }
+
+    // ---------- Vinted : import des annonces depuis les pages ouvertes ----------
+
+    /** Résultat de la fusion d'une annonce relevée sur Vinted. */
+    data class UpsertResult(val articleId: Long, val created: Boolean)
+
+    /**
+     * Ajoute ou met à jour l'article correspondant à une annonce Vinted (même numéro d'annonce).
+     * Ne remplace jamais ce que l'utilisateur a saisi : seuls les champs vides sont complétés ;
+     * le prix et les compteurs suivent Vinted. [sold] : annonce vue dans le filtre « Vendus ».
+     */
+    suspend fun upsertImported(listing: ImportedListing, sold: Boolean): UpsertResult = db.withTransaction {
+        val now = clock()
+        val existing = articleDao.getAll().firstOrNull { VintedLinks.itemId(it.vintedUrl) == listing.itemId }
+        if (existing == null) {
+            val id = articleDao.insert(
+                ArticleEntity(
+                    title = listing.title.take(fr.vintedassistant.mobile.domain.Article.TITLE_MAX_LENGTH),
+                    costCents = 0,
+                    priceCents = listing.priceCents ?: 0,
+                    status = (if (sold) ArticleStatus.SOLD else ArticleStatus.ONLINE).label,
+                    createdAt = now,
+                    updatedAt = now,
+                    brand = listing.brand,
+                    size = listing.size,
+                    condition = listing.condition,
+                    color = listing.color,
+                    description = listing.description,
+                    vintedUrl = listing.url,
+                    favoritesCount = listing.favorites,
+                    viewsCount = listing.views,
+                )
+            )
+            return@withTransaction UpsertResult(id, created = true)
+        }
+        val status = ArticleStatus.fromLabel(existing.status)
+        val newStatus = when {
+            sold -> ArticleStatus.SOLD
+            status == ArticleStatus.DRAFT -> ArticleStatus.ONLINE
+            else -> status
+        }
+        val newPrice = listing.priceCents ?: existing.priceCents
+        articleDao.update(
+            existing.copy(
+                priceCents = newPrice,
+                floorPriceCents = existing.floorPriceCents?.takeIf { it <= newPrice },
+                status = newStatus.label,
+                brand = existing.brand.ifBlank { listing.brand },
+                size = existing.size.ifBlank { listing.size },
+                condition = existing.condition.ifBlank { listing.condition },
+                color = existing.color.ifBlank { listing.color },
+                description = existing.description.ifBlank { listing.description },
+                vintedUrl = listing.url,
+                favoritesCount = listing.favorites ?: existing.favoritesCount,
+                viewsCount = listing.views ?: existing.viewsCount,
+                updatedAt = now,
+            )
+        )
+        if (newPrice != existing.priceCents) {
+            eventDao.insert(ListingEventEntity(articleId = existing.id, type = ListingEventEntity.PRICE_CHANGED, at = now, priceCents = newPrice))
+        }
+        UpsertResult(existing.id, created = false)
+    }
+
+    /** Télécharge les photos d'une annonce importée, seulement si la fiche n'en a encore aucune. Renvoie le nombre ajouté. */
+    suspend fun attachRemotePhotos(articleId: Long, urls: List<String>, max: Int = 10): Int {
+        val store = photoStore ?: return 0
+        if (photoDao.forArticle(articleId).isNotEmpty()) return 0
+        var added = 0
+        for (url in urls.take(max)) {
+            try {
+                val name = store.importBytes(ImageDownloader.download(url))
+                try {
+                    photoDao.insert(PhotoEntity(articleId = articleId, fileName = name, position = added, createdAt = clock()))
+                    added++
+                } catch (e: Exception) {
+                    store.delete(name)
+                }
+            } catch (e: Exception) {
+                // Photo indisponible : on passe à la suivante.
+            }
+        }
+        return added
     }
 
     // ---------- Vinted : lien, notifications, import ----------

@@ -13,6 +13,7 @@ import fr.vintedassistant.mobile.domain.SaleValidation
 import fr.vintedassistant.mobile.domain.ShippingStatus
 import fr.vintedassistant.mobile.domain.VintedEventKind
 import fr.vintedassistant.mobile.data.importer.ExportCandidate
+import fr.vintedassistant.mobile.data.importer.ImportedListing
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -194,5 +195,36 @@ class RepositoryTest {
         val id = repo.create(fields())
         repo.setVintedUrl(id, "https://www.vinted.fr/items/1-pull")
         assertEquals("https://www.vinted.fr/items/1-pull", repo.getArticle(id)!!.vintedUrl)
+    }
+
+    @Test
+    fun importedListingsAreMergedNotDuplicated() = runBlocking {
+        val url = "https://www.vinted.fr/items/222-bracelet-dore"
+        val first = repo.upsertImported(ImportedListing(222, url, "Bracelet doré", 600, favorites = 4, views = 22), sold = false)
+        assertTrue(first.created)
+        var article = repo.getArticle(first.articleId)!!
+        assertEquals(ArticleStatus.ONLINE, article.status)
+        assertEquals(4, article.favoritesCount)
+        assertNull(article.lastVisibleAt) // date inconnue : prioritaire dans le plan de republication
+
+        // L'utilisateur complète sa fiche, puis réimporte la page détaillée.
+        repo.update(first.articleId, fields(price = 600).copy(title = "Mon bracelet", description = "Ma description", brand = "", vintedUrl = url))
+        val again = repo.upsertImported(
+            ImportedListing(222, url, "Bracelet doré", 500, description = "Texte Vinted", brand = "Sans marque", favorites = 5, detailed = true),
+            sold = false,
+        )
+        assertTrue(!again.created)
+        assertEquals(first.articleId, again.articleId)
+        article = repo.getArticle(first.articleId)!!
+        assertEquals("Mon bracelet", article.title) // jamais écrasé
+        assertEquals("Ma description", article.description)
+        assertEquals("Sans marque", article.brand) // champ vide complété
+        assertEquals(500L, article.priceCents) // le prix suit Vinted
+        assertEquals(5, article.favoritesCount)
+        assertEquals(1, repo.articles.first().size)
+
+        // Vue ensuite dans « Vendus ».
+        repo.upsertImported(ImportedListing(222, url, "Bracelet doré", 500), sold = true)
+        assertEquals(ArticleStatus.SOLD, repo.getArticle(first.articleId)!!.status)
     }
 }

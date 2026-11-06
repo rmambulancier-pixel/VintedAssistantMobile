@@ -22,7 +22,8 @@ class AssistantRulesTest {
         val now = at(20)
         val articles = listOf(online(1, at(10)), online(2, at(1)), online(3, at(5)), online(4, at(18)), online(5, null))
         val plan = RepublishPlanner.plan(articles, emptyList(), RepublishSettings(minAgeDays = 7, maxPerDay = 2), now, zone)
-        assertEquals(listOf(2L, 3L), plan.today.map { it.id })
+        // Article 5 : date inconnue (import Vinted), donc prioritaire ; puis le plus ancien.
+        assertEquals(listOf(5L, 2L), plan.today.map { it.id })
         assertEquals(2, plan.remainingQuota)
         assertEquals(1, plan.waiting) // article 4, trop récent
     }

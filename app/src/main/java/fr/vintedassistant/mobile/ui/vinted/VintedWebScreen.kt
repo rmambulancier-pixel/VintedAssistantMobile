@@ -52,6 +52,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import fr.vintedassistant.mobile.domain.Article
+import fr.vintedassistant.mobile.data.importer.ImportedListing
+import fr.vintedassistant.mobile.data.importer.PageImport
+import androidx.compose.runtime.rememberCoroutineScope
+import android.content.Context
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 import fr.vintedassistant.mobile.domain.ListingTemplates
 import fr.vintedassistant.mobile.domain.Money
 import fr.vintedassistant.mobile.domain.VintedLinks
@@ -65,6 +77,7 @@ private val ALLOWED_HOSTS = Regex("""(^|\.)(vinted\.[a-z.]{2,6}|accounts\.google
 /** État de la page partagé avec le WebView (photos prêtes, sélecteur de fichiers en attente). */
 private class WebSession {
     var pendingPhotos: List<Uri> = emptyList()
+    var pageLoaded: CompletableDeferred<Unit>? = null
     var fileCallback: ValueCallback<Array<Uri>>? = null
     var webView: WebView? = null
 }
@@ -96,6 +109,9 @@ fun VintedWebScreen(
     var status by remember { mutableStateOf<String?>(null) }
     var diagnostic by remember { mutableStateOf<String?>(null) }
     var photosReady by remember { mutableStateOf(0) }
+    val scope = rememberCoroutineScope()
+    var importJob by remember { mutableStateOf<Job?>(null) }
+    var importProgress by remember { mutableStateOf<String?>(null) }
 
     val candidates = articles.orEmpty().filter { it.status.inStock }
     val article = candidates.firstOrNull { it.id == selectedId }
@@ -148,6 +164,25 @@ fun VintedWebScreen(
                 }
             }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(
+                    enabled = importJob == null,
+                    onClick = {
+                        val web = session.webView ?: return@Button
+                        importJob = scope.launch {
+                            try {
+                                status = runImport(context, web, session, currentUrl) { importProgress = it }
+                            } catch (e: CancellationException) {
+                                status = "Import arrêté. Ce qui a déjà été importé est conservé."
+                                throw e
+                            } catch (e: Exception) {
+                                status = "Import interrompu par une erreur. Ce qui a déjà été importé est conservé."
+                            } finally {
+                                importProgress = null
+                                importJob = null
+                            }
+                        }
+                    },
+                ) { Text(if (currentUrl.contains("/items/")) "Importer cette annonce" else "Importer tout mon dressing") }
                 OutlinedButton(onClick = { session.webView?.loadUrl(SELL) }) { Text("Vendre") }
                 Button(
                     enabled = article != null,
@@ -196,6 +231,14 @@ fun VintedWebScreen(
                     status = "Session Vinted effacée de l'application."
                 }) { Text("Se déconnecter") }
             }
+            importProgress?.let { p ->
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                    Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(p, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { importJob?.cancel() }) { Text("Arrêter") }
+                    }
+                }
+            }
             status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
@@ -232,6 +275,7 @@ fun VintedWebScreen(
                         override fun onPageFinished(view: WebView, url: String?) {
                             loading = false
                             currentUrl = url.orEmpty()
+                            session.pageLoaded?.complete(Unit)
                         }
                     }
                     webChromeClient = object : WebChromeClient() {
@@ -293,5 +337,131 @@ private fun BetaWarning(modifier: Modifier, onAccept: () -> Unit, onClose: () ->
         }
         Button(onClick = onAccept, modifier = Modifier.fillMaxWidth()) { Text("J'ai compris, activer la bêta") }
         OutlinedButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Ne pas activer") }
+    }
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// Import des annonces depuis les pages Vinted ouvertes par l'utilisateur.
+// Lecture seule : défilement, filtre « Actifs » / « Vendus », ouverture de chaque annonce.
+// Aucune modification sur Vinted. Pauses entre les pages pour ne pas surcharger le site.
+// ---------------------------------------------------------------------------------------------
+
+private const val MAX_DETAILED = 100
+
+private suspend fun WebView.evalJs(script: String): String? = suspendCancellableCoroutine { cont ->
+    evaluateJavascript(script) { raw -> if (cont.isActive) cont.resume(VintedPageScripts.decode(raw)) }
+}
+
+private suspend fun loadAndWait(web: WebView, session: WebSession, url: String): Boolean {
+    val done = CompletableDeferred<Unit>()
+    session.pageLoaded = done
+    web.loadUrl(url)
+    val ok = withTimeoutOrNull(25_000) { done.await() } != null
+    session.pageLoaded = null
+    return ok
+}
+
+/** Fait défiler le dressing jusqu'à ce que plus aucune annonce ne se charge. */
+private suspend fun scrollToEnd(web: WebView) {
+    var last = -1
+    var stable = 0
+    repeat(40) {
+        val count = web.evalJs(VintedPageScripts.scrollAndCount)?.toIntOrNull() ?: 0
+        if (count == last) stable++ else stable = 0
+        last = count
+        if (stable >= 2) return
+        delay(1_500)
+    }
+}
+
+private suspend fun readGrid(web: WebView): List<ImportedListing> =
+    web.evalJs(VintedPageScripts.grid)?.let { runCatching { PageImport.parseGrid(it) }.getOrNull() }.orEmpty()
+
+private suspend fun runImport(
+    context: Context,
+    web: WebView,
+    session: WebSession,
+    currentUrl: String,
+    progress: (String) -> Unit,
+): String {
+    val repository = context.container().articleRepository
+
+    // Page d'une seule annonce.
+    if (currentUrl.contains("/items/")) {
+        progress("Lecture de l'annonce…")
+        val listing = web.evalJs(VintedPageScripts.item)?.let { runCatching { PageImport.parseItem(it) }.getOrNull() }
+            ?: return "Annonce non reconnue sur cette page. Lance le diagnostic et transmets-le."
+        val result = repository.upsertImported(listing, sold = false)
+        val photos = repository.attachRemotePhotos(result.articleId, listing.imageUrls)
+        return (if (result.created) "Annonce importée" else "Fiche mise à jour") + " : ${listing.title}" +
+            (if (photos > 0) ", $photos photo(s)." else ".")
+    }
+
+    if (!currentUrl.contains("/member/")) {
+        return "Ouvre d'abord ton profil Vinted (ton dressing, là où s'affichent tes annonces), puis relance l'import."
+    }
+    val profileUrl = currentUrl
+
+    // 1. Annonces en vente.
+    progress("Chargement des annonces en vente…")
+    val activeFilter = web.evalJs(VintedPageScripts.clickFilter("actifs")) == "true"
+    if (activeFilter) delay(2_500)
+    scrollToEnd(web)
+    val active = readGrid(web)
+
+    // 2. Annonces vendues.
+    progress("Chargement des annonces vendues…")
+    val soldFilter = web.evalJs(VintedPageScripts.clickFilter("vendus")) == "true"
+    val sold = if (soldFilter) {
+        delay(2_500)
+        scrollToEnd(web)
+        val activeIds = if (activeFilter) active.map { it.itemId }.toSet() else emptySet()
+        readGrid(web).filter { it.itemId !in activeIds }
+    } else {
+        emptyList()
+    }
+    val soldIds = sold.map { it.itemId }.toSet()
+    val all = active.filter { it.itemId !in soldIds }.map { it to false } + sold.map { it to true }
+    if (all.isEmpty()) {
+        loadAndWait(web, session, profileUrl)
+        return "Aucune annonce trouvée sur cette page. Lance le diagnostic sur ton dressing et transmets-le."
+    }
+
+    // 3. Fiches de base, tout de suite.
+    var created = 0
+    all.forEach { (listing, isSold) -> if (repository.upsertImported(listing, isSold).created) created++ }
+
+    // 4. Détail de chaque annonce (description, marque, taille, état, photos).
+    var detailed = 0
+    var photos = 0
+    val toDetail = all.take(MAX_DETAILED)
+    toDetail.forEachIndexed { index, (listing, isSold) ->
+        progress("Fiche ${index + 1} / ${toDetail.size} : ${listing.title}")
+        if (!loadAndWait(web, session, listing.url)) return@forEachIndexed
+        delay(1_500)
+        val item = web.evalJs(VintedPageScripts.item)?.let { runCatching { PageImport.parseItem(it) }.getOrNull() }
+        if (item != null && item.itemId == listing.itemId) {
+            val merged = item.copy(
+                favorites = item.favorites ?: listing.favorites,
+                views = item.views ?: listing.views,
+                priceCents = item.priceCents ?: listing.priceCents,
+            )
+            val result = repository.upsertImported(merged, isSold)
+            photos += repository.attachRemotePhotos(result.articleId, merged.imageUrls.ifEmpty { listing.imageUrls })
+            detailed++
+        } else {
+            photos += repository.upsertImported(listing, isSold).let { repository.attachRemotePhotos(it.articleId, listing.imageUrls, max = 1) }
+        }
+        delay(2_000)
+    }
+    loadAndWait(web, session, profileUrl)
+
+    return buildString {
+        append("${active.size - active.count { it.itemId in soldIds }} en vente et ${sold.size} vendue(s) trouvées ; ")
+        append("$created nouvelle(s) fiche(s), $detailed complétée(s), $photos photo(s) téléchargée(s).")
+        if (!soldFilter) append(" Filtre « Vendus » introuvable : annonces vendues non importées.")
+        if (all.size > MAX_DETAILED) append(" Détail limité aux $MAX_DETAILED premières : relance pour la suite.")
+        append(" Complète le coût d'achat de chaque fiche pour avoir tes marges.")
     }
 }

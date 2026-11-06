@@ -37,6 +37,9 @@ data class ArticleEntity(
     @ColumnInfo(name = "last_published_at") val lastPublishedAt: Long? = null,
     // --- v3 ---
     @ColumnInfo(name = "vinted_url", defaultValue = "") val vintedUrl: String = "",
+    // --- v4 ---
+    @ColumnInfo(name = "favorites_count") val favoritesCount: Int? = null,
+    @ColumnInfo(name = "views_count") val viewsCount: Int? = null,
 )
 
 @Entity(
@@ -154,6 +157,8 @@ fun ArticleEntity.toDomain(photos: List<String> = emptyList()) = Article(
     lastPublishedAt = lastPublishedAt,
     photos = photos,
     vintedUrl = vintedUrl,
+    favoritesCount = favoritesCount,
+    viewsCount = viewsCount,
 )
 
 fun SaleEntity.toDomain() = Sale(

@@ -19,6 +19,18 @@ object VintedLinks {
         false
     }
 
+    /** Numéro de l'annonce dans un lien « …/items/123456-titre ». */
+    fun itemId(url: String): Long? =
+        if (!isVintedUrl(url)) null else Regex("""/items/(\d+)""").find(url)?.groupValues?.get(1)?.toLongOrNull()
+
+    /** Titre lisible déduit du lien : « /items/123-collier-strass-argent » donne « Collier strass argent ». */
+    fun titleFromUrl(url: String): String? {
+        val slug = Regex("""/items/\d+-([^/?#]+)""").find(url)?.groupValues?.get(1) ?: return null
+        val words = slug.split('-').filter { it.isNotBlank() }
+        if (words.isEmpty()) return null
+        return words.joinToString(" ").replaceFirstChar { it.uppercase() }
+    }
+
     /** Extrait le premier lien Vinted d'un texte partagé (« Regarde cet article : https://… »). */
     fun extract(text: String): String? =
         URL.findAll(text).map { it.value.trimEnd('.', ',', ')', ';') }.firstOrNull { isVintedUrl(it) }

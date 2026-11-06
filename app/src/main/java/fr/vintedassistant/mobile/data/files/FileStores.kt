@@ -50,6 +50,28 @@ class PhotoStore(private val context: Context) {
         file(name).delete()
     }
 
+    /** Importe une image déjà téléchargée (octets JPEG/PNG/WebP), réduite et réencodée comme les autres. */
+    suspend fun importBytes(bytes: ByteArray): String = withContext(Dispatchers.IO) {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0) throw IOException("Image illisible")
+        val options = BitmapFactory.Options().apply { inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight, MAX_DIMENSION) }
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: throw IOException("Image illisible")
+        val name = "${UUID.randomUUID()}.jpg"
+        val target = file(name)
+        try {
+            target.outputStream().use { out ->
+                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)) throw IOException("Compression JPEG impossible")
+            }
+        } catch (e: IOException) {
+            target.delete()
+            throw e
+        } finally {
+            bitmap.recycle()
+        }
+        name
+    }
+
     /** Miniature pour l'affichage. Null si le fichier est absent ou illisible. */
     suspend fun thumbnail(name: String, maxDimension: Int): Bitmap? = withContext(Dispatchers.IO) {
         val f = file(name)
@@ -148,5 +170,39 @@ class LabelStore(private val context: Context) {
 
     companion object {
         const val MAX_BYTES = 15L * 1024 * 1024
+    }
+}
+
+/**
+ * Téléchargement des photos de vos annonces depuis les serveurs d'images de Vinted.
+ * Seules les adresses https des serveurs Vinted sont acceptées ; 10 Mo maximum par image.
+ */
+object ImageDownloader {
+    private const val MAX_BYTES = 10L * 1024 * 1024
+
+    suspend fun download(url: String): ByteArray = withContext(Dispatchers.IO) {
+        if (!fr.vintedassistant.mobile.data.importer.PageImport.isAllowedImage(url)) throw IOException("Adresse d'image refusée")
+        val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        connection.connectTimeout = 15_000
+        connection.readTimeout = 20_000
+        connection.instanceFollowRedirects = false
+        try {
+            if (connection.responseCode != 200) throw IOException("Réponse ${connection.responseCode}")
+            connection.inputStream.use { input ->
+                val out = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(64 * 1024)
+                var total = 0L
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    total += read
+                    if (total > MAX_BYTES) throw IOException("Image trop lourde")
+                    out.write(buffer, 0, read)
+                }
+                out.toByteArray()
+            }
+        } finally {
+            connection.disconnect()
+        }
     }
 }
