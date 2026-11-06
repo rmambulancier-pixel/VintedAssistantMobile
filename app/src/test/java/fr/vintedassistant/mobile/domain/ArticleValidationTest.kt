@@ -35,8 +35,41 @@ class ArticleValidationTest {
 
     @Test
     fun marginIsPriceMinusCost() {
-        val article = Article(1, "Pull", costCents = 850, priceCents = 2500, status = Article.STATUS_DRAFT, createdAt = 0)
+        val article = Article(1, "Pull", costCents = 850, priceCents = 2500, status = ArticleStatus.DRAFT, createdAt = 0)
         assertEquals(1650L, article.marginCents)
         assertEquals(-100L, article.copy(priceCents = 750).marginCents)
+    }
+
+    @Test
+    fun fullFormValidatesFloorPrice() {
+        val ok = validateArticleForm(ArticleForm(title = "Pull", cost = "5", price = "20", floorPrice = "15", brand = " Zara "))
+        assertTrue(ok is FormValidation.Valid)
+        val fields = (ok as FormValidation.Valid).fields
+        assertEquals(1500L, fields.floorPriceCents)
+        assertEquals("Zara", fields.brand)
+
+        val noFloor = validateArticleForm(ArticleForm(title = "Pull", cost = "5", price = "20")) as FormValidation.Valid
+        assertEquals(null, noFloor.fields.floorPriceCents)
+
+        val tooHigh = validateArticleForm(ArticleForm(title = "Pull", cost = "5", price = "20", floorPrice = "21"))
+        assertTrue(tooHigh is FormValidation.Invalid)
+    }
+
+    @Test
+    fun articleToFormRoundTrips() {
+        val article = Article(1, "Pull", 850, 2500, ArticleStatus.ONLINE, 0, floorPriceCents = 2000, brand = "Zara")
+        val back = validateArticleForm(article.toForm()) as FormValidation.Valid
+        assertEquals(850L, back.fields.costCents)
+        assertEquals(2500L, back.fields.priceCents)
+        assertEquals(2000L, back.fields.floorPriceCents)
+        assertEquals("Zara", back.fields.brand)
+    }
+
+    @Test
+    fun statusFromUnknownLabelFallsBackToDraft() {
+        assertEquals(ArticleStatus.ONLINE, ArticleStatus.fromLabel("En ligne"))
+        assertEquals(ArticleStatus.DRAFT, ArticleStatus.fromLabel("???"))
+        assertTrue(ArticleStatus.RESERVED.inStock)
+        assertTrue(!ArticleStatus.SOLD.inStock)
     }
 }

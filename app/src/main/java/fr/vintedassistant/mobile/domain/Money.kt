@@ -29,6 +29,13 @@ object Money {
         return if (cents > BigDecimal.valueOf(MAX_CENTS)) null else cents.toLong()
     }
 
+    /** Montant pour un champ de saisie : « 12,5 » devient « 12,50 », « 12,00 » devient « 12 ». */
+    fun formatPlain(cents: Long): String {
+        val euros = cents / 100
+        val rest = cents % 100
+        return if (rest == 0L) euros.toString() else euros.toString() + "," + rest.toString().padStart(2, '0')
+    }
+
     /**
      * Affiche des centimes à la française : « 1 234,56 € »
      * (espace fine insécable pour les milliers, espace insécable avant €).
