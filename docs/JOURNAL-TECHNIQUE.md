@@ -104,7 +104,35 @@ Refus définitif : modifier les photos pour échapper à la détection de Vinted
 - L'heure du rappel n'est pas garantie à la minute (WorkManager).
 - Pas encore de sauvegarde exportable : prochaine priorité.
 
+## Connexion à Vinted et logo (version 0.4.0)
+
+Décision de l'utilisateur (6 novembre 2026) : faire les trois voies sûres et tester en bêta
+un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés ni d'API privée.
+
+- **Notifications Vinted** (`notifications/VintedNotificationListener`) : lecture locale des
+  notifications du paquet `fr.vinted` uniquement, classement (vente, offre, message, favori),
+  article reconnu par son nom, montant extrait, purge à 60 jours. Écran « Activité Vinted »
+  (icône cloche) avec actions vers la fiche ou l'assistant. Contenu exact des notifications
+  Vinted non documenté : classement par mots-clés, à ajuster sur des exemples réels.
+  APK hors Play Store : Android peut demander d'« Autoriser les paramètres restreints ».
+- **Liens** : champ « Lien de l'annonce Vinted » par fiche, ouverture de l'annonce dans
+  l'application Vinted, réception d'un lien partagé depuis Vinted (« Partager » → Vinted Assistant).
+- **Export RGPD** (`data/importer/VintedExportParser`) : lecture tolérante du ZIP (JSON, CSV),
+  articles importés en brouillon sans doublon, rapport de structure copiable sans données
+  personnelles pour adapter l'import au format réel.
+- **Bêta « Vinted intégré »** (`ui/vinted/`) : vinted.fr dans un WebView, connexion faite par
+  l'utilisateur. Sur appui : remplissage titre, description, prix ; photos de la fiche fournies
+  directement au sélecteur de fichiers de la page ; « Lier cette page » ; diagnostic de la page
+  (champs et boutons, sans valeurs ni mot de passe) pour écrire ensuite des automatisations
+  ciblées. Avertissement CGU à accepter. Aucun clic automatique, aucune publication seule,
+  aucune protection contournée, pas de messages en masse. Téléphone déverrouillé seulement.
+- **Logo** : icône adaptative originale (étiquette ambre, flèche montante, fond indigo)
+  avec version monochrome.
+- Base v3 (migration automatique 2 → 3). 12 tests sur émulateur, tests JVM de l'import.
+
 ## Étapes suivantes
 
+- Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des
+  exemples réels transmis par l'utilisateur.
 - Sauvegarde et restauration (export chiffré données + photos).
 - Mise à jour des versions (AGP, Kotlin, Compose) dans un commit séparé, une fois l'usage validé.
