@@ -12,8 +12,9 @@ android {
         applicationId = "fr.vintedassistant.mobile"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true }
     compileOptions {
@@ -37,6 +38,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
@@ -45,9 +47,20 @@ dependencies {
     implementation("androidx.room:room-ktx:2.8.4")
     ksp("androidx.room:room-compiler:2.8.4")
 
+    // Rappel quotidien de republication (tâche différable, survit au redémarrage).
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
+
+    // IA sur le téléphone : Gemini Nano via ML Kit (gratuit, hors ligne). API en bêta.
+    implementation("com.google.mlkit:genai-prompt:1.0.0-beta4")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
     // Vraie implémentation de org.json pour les tests JVM (celle d'Android n'existe pas hors appareil).
     testImplementation("org.json:json:20240303")
+
+    // Tests sur émulateur : base Room réelle et migration 1 → 2.
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test:core-ktx:1.7.0")
 }
