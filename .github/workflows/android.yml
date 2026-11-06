@@ -41,6 +41,20 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon assembleDebug testDebugUnitTest
 
+      # Le schéma Room doit être versionné dans le dépôt : on l'affiche pour pouvoir le vérifier.
+      - name: Show Room schema
+        if: always()
+        run: find app/schemas -name '*.json' -print -exec cat {} \; || true
+
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: app/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
