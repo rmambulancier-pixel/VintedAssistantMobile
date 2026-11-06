@@ -85,7 +85,9 @@ object VintedPageScripts {
     /** Page d'une annonce : données structurées (JSON-LD), balises de partage, détails affichés, photos de l'annonce. */
     val item: String = """
         (function(){
-          const out={url:location.href,title:'',price:'',description:'',brand:'',size:'',condition:'',color:'',favorites:'',views:'',images:[]};
+          $HELPERS
+          const out={url:location.href,title:'',price:'',description:'',brand:'',size:'',condition:'',color:'',category:'',added:'',favorites:'',views:'',images:[]};
+          const crumbs=[];
           const meta=n=>{const e=document.querySelector('meta[property="'+n+'"],meta[name="'+n+'"]');return e?(e.content||''):'';};
           function walk(o){
             if(!o||typeof o!=='object')return;
@@ -99,6 +101,9 @@ object VintedPageScripts {
               const im=Array.isArray(o.image)?o.image:(o.image?[o.image]:[]);
               im.forEach(u=>out.images.push(typeof u==='string'?u:(u.url||u.contentUrl||'')));
               if(typeof o.color==='string')out.color=out.color||o.color;
+            }
+            if(t==='BreadcrumbList'&&Array.isArray(o.itemListElement)){
+              o.itemListElement.forEach(e=>{const n=e.name||(e.item&&e.item.name);if(n)crumbs.push(String(n));});
             }
             if(o['@graph'])walk(o['@graph']);
           }
@@ -118,11 +123,20 @@ object VintedPageScripts {
           }
           out.brand=out.brand||detail(['marque']);out.size=detail(['taille']);
           out.condition=detail(['état','etat']);out.color=out.color||detail(['couleur']);
+          out.added=detail(['ajouté','ajoute']);
+          // Catégorie : fil d'Ariane structuré, sinon liens du catalogue en haut de page ; on garde le niveau le plus précis.
+          if(!crumbs.length){Array.from(document.querySelectorAll('a[href*="/catalog/"]')).filter(vbVisible)
+            .filter(a=>a.getBoundingClientRect().top+window.scrollY<1200).forEach(a=>{const t=(a.innerText||'').trim();if(t)crumbs.push(t);});}
+          const cats=crumbs.filter(c=>c&&c.toLowerCase()!==String(out.title).toLowerCase()&&!/^(vinted|accueil|home)$/i.test(c));
+          out.category=cats.length?cats[cats.length-1]:'';
           const body=document.body.innerText||'';
           out.favorites=(body.match(/(\d+)\s*favori/i)||['',''])[1];out.views=(body.match(/(\d+)\s*vue/i)||['',''])[1];
           const id=(location.pathname.match(/\/items\/(\d+)/)||[])[1];
           Array.from(document.querySelectorAll('img')).forEach(i=>{
             const u=i.currentSrc||i.src;if(!u||!/vinted\.net/.test(u)||(i.naturalWidth||0)<400)return;
+            const box=i.getBoundingClientRect();
+            if(box.width<150||box.height<150)return; // avatar, icônes
+            if(i.closest('a[href*="/member/"]'))return; // photo de profil
             const link=i.closest('a[href*="/items/"]');
             if(link&&id&&link.href.indexOf('/items/'+id)<0)return; // photo d'une autre annonce (suggestions)
             if(i.getBoundingClientRect().top+window.scrollY>2000)return; // bas de page : suggestions

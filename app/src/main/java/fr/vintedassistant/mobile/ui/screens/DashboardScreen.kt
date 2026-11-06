@@ -54,6 +54,24 @@ fun DashboardScreen(
                 "Bénéfice net" to Money.formatEuros(stats.totalNetCents),
             )
         }
+        if (stats.undatedSalesCount > 0) {
+            item {
+                Text(
+                    "Dont ${stats.undatedSalesCount} vente(s) importée(s) de Vinted sans date connue : " +
+                        "comptées depuis le début, pas dans le mois.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+        if (stats.missingCostCount > 0) {
+            item {
+                Text(
+                    "${stats.missingCostCount} article(s) sans coût d'achat : marges et bénéfices surestimés tant qu'il n'est pas saisi.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
         item {
             Text(
                 "Bénéfice net = prix de vente − coût d'achat − frais − cotisations (" +

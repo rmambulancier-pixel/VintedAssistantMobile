@@ -32,6 +32,8 @@ data class Sale(
     val shippingStatus: ShippingStatus = ShippingStatus.TO_SHIP,
     val labelPath: String? = null,
     val notes: String = "",
+    /** Faux pour une vente importée de Vinted dont la date est inconnue. */
+    val dateKnown: Boolean = true,
 ) {
     val counted: Boolean get() = shippingStatus != ShippingStatus.CANCELLED
 }

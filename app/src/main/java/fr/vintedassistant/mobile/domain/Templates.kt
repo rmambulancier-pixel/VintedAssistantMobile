@@ -53,6 +53,25 @@ object ListingTemplates {
             .joinToString(" ") { "#$it" }
     }
 
+    /**
+     * Sépare le bloc final de mots-clés d'une description (dernier paragraphe fait uniquement de mots,
+     * sans ponctuation de phrase, au moins 4 mots ; ou hashtags). Renvoie (description, mots-clés).
+     */
+    fun splitKeywords(description: String): Pair<String, String> {
+        val text = description.trimEnd()
+        val blocks = text.split(Regex("""\n\s*\n""")).map { it.trim() }.filter { it.isNotEmpty() }
+        val candidate = (if (blocks.size >= 2) blocks.last() else text.lines().lastOrNull()?.trim()) ?: return text to ""
+        if (candidate == text) return text to ""
+        val tokens = candidate.split(Regex("""[\s,]+""")).filter { it.isNotBlank() }
+        val hashtags = tokens.count { it.startsWith("#") }
+        val wordLike = tokens.all { Regex("""^#?[\p{L}\p{N}'’-]+$""").matches(it) }
+        val noSentence = !Regex("""[.!?:;]""").containsMatchIn(candidate)
+        val mostlyLower = tokens.count { it.trimStart('#').firstOrNull()?.isLowerCase() == true } >= tokens.size * 0.8
+        val isKeywords = tokens.size >= 4 && wordLike && noSentence && (hashtags >= tokens.size / 2 || mostlyLower)
+        if (!isKeywords) return text to ""
+        return text.removeSuffix(candidate).trimEnd() to tokens.joinToString(" ")
+    }
+
     internal fun slug(word: String): String =
         Normalizer.normalize(word.lowercase(), Normalizer.Form.NFD)
             .replace(Regex("\\p{Mn}+"), "")

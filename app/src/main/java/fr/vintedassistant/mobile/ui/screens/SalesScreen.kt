@@ -106,7 +106,7 @@ fun SalesScreen(
             SaleCard(
                 sale = sale,
                 netCents = Finance.netCents(sale, contributionRateBp),
-                date = dateFormat.format(Date(sale.soldAt)),
+                date = if (sale.dateKnown) dateFormat.format(Date(sale.soldAt)) else "Date inconnue (import Vinted)",
                 onStatus = { onStatus(sale.id, it) },
                 onAddLabel = {
                     labelForSale = sale.id

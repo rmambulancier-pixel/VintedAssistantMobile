@@ -217,6 +217,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                 onHandled = vm::markNoticeHandled,
                 onAllHandled = vm::markAllNoticesHandled,
                 onOpenArticle = { close(); openEditor(it) },
+                onOpenSales = { tabIndex = Tab.SALES.ordinal; close() },
                 onAssist = { id, subTab ->
                     assistantArticle = id
                     assistantTab = subTab

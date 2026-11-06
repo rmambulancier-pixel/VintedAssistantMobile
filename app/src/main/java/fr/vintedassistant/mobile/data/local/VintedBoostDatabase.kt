@@ -17,16 +17,18 @@ import androidx.room.RoomDatabase
  * - v2 (0.3.0) : fiche complète, photos, ventes, journal des publications.
  * - v3 (0.4.0) : lien de l'annonce Vinted, notifications Vinted reçues.
  * - v4 (0.5.0) : favoris et vues relevés sur Vinted.
+ * - v5 (0.6.0) : ventes importées sans date connue.
  */
 @Database(
     entities = [
         ArticleEntity::class, PhotoEntity::class, SaleEntity::class, ListingEventEntity::class,
         VintedNotificationEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
     autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
+        AutoMigration(from = 4, to = 5),
     ],
 )
 abstract class VintedBoostDatabase : RoomDatabase() {

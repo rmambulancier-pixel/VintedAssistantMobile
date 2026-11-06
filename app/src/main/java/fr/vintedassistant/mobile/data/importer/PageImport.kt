@@ -16,6 +16,9 @@ data class ImportedListing(
     val size: String = "",
     val condition: String = "",
     val color: String = "",
+    val category: String = "",
+    /** Texte « Ajouté » de Vinted (« Il y a une semaine »), pour estimer la date de mise en ligne. */
+    val addedText: String = "",
     val favorites: Int? = null,
     val views: Int? = null,
     val imageUrls: List<String> = emptyList(),
@@ -79,6 +82,8 @@ object PageImport {
             size = o.optString("size").trim().take(120),
             condition = o.optString("condition").trim().take(120),
             color = o.optString("color").trim().take(120),
+            category = o.optString("category").trim().take(120),
+            addedText = o.optString("added").trim().take(60),
             favorites = count(o.optString("favorites")),
             views = count(o.optString("views")),
             imageUrls = images.map { it.trim() }.filter(::isAllowedImage).distinct().take(MAX_IMAGES),

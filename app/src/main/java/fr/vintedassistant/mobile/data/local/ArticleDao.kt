@@ -52,6 +52,9 @@ interface PhotoDao {
     @Query("DELETE FROM article_photos WHERE article_id = :articleId")
     suspend fun deleteForArticle(articleId: Long): Int
 
+    @Query("SELECT * FROM article_photos")
+    suspend fun getAll(): List<PhotoEntity>
+
     @Query("SELECT * FROM article_photos WHERE article_id = :articleId AND file_name = :fileName LIMIT 1")
     suspend fun find(articleId: Long, fileName: String): PhotoEntity?
 }
@@ -69,6 +72,13 @@ interface SaleDao {
 
     @Update
     suspend fun update(sale: SaleEntity): Int
+
+    @Query("SELECT DISTINCT article_id FROM sales WHERE article_id IS NOT NULL")
+    suspend fun articleIdsWithSales(): List<Long>
+
+    /** Garde le coût des ventes importées (date inconnue) aligné sur la fiche. */
+    @Query("UPDATE sales SET cost_cents = :costCents WHERE article_id = :articleId AND date_known = 0")
+    suspend fun syncCostForImported(articleId: Long, costCents: Long): Int
 
     @Query("UPDATE sales SET article_id = NULL WHERE article_id = :articleId")
     suspend fun detachArticle(articleId: Long): Int
@@ -99,6 +109,12 @@ interface VintedNotificationDao {
 
     @Query("UPDATE vinted_notifications SET handled = 1 WHERE id = :id")
     suspend fun markHandled(id: Long): Int
+
+    @Query("SELECT * FROM vinted_notifications")
+    suspend fun getAll(): List<VintedNotificationEntity>
+
+    @Query("UPDATE vinted_notifications SET kind = :kind, article_id = :articleId WHERE id = :id")
+    suspend fun reclassify(id: Long, kind: String, articleId: Long?): Int
 
     @Query("UPDATE vinted_notifications SET handled = 1")
     suspend fun markAllHandled(): Int

@@ -27,6 +27,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.runtime.setValue
 import fr.vintedassistant.mobile.domain.Article
@@ -74,7 +78,27 @@ fun ActivityScreen(
     onAllHandled: () -> Unit,
     onOpenArticle: (Long) -> Unit,
     onAssist: (Long, Int) -> Unit,
+    onOpenSales: () -> Unit = {},
 ) {
+    var pickForNotice by remember { mutableStateOf<Long?>(null) }
+    pickForNotice?.let { noticeId ->
+        val choices = articles.orEmpty().filter { it.status.inStock }
+        AlertDialog(
+            onDismissRequest = { pickForNotice = null },
+            title = { Text("Quel article est vendu ?") },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    if (choices.isEmpty()) Text("Aucun article en stock.")
+                    choices.forEach { a ->
+                        TextButton(onClick = { pickForNotice = null; onHandled(noticeId); onOpenArticle(a.id) }) {
+                            Text("${a.title} • ${Money.formatEuros(a.priceCents)}")
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { pickForNotice = null }) { Text("Annuler") } },
+        )
+    }
     val context = LocalContext.current
     var enabled by remember { mutableStateOf(VintedNotificationListener.isEnabled(context)) }
     LifecycleResumeEffect(Unit) {
@@ -139,8 +163,15 @@ fun ActivityScreen(
                     if (notice.text.isNotBlank()) Text(notice.text, style = MaterialTheme.typography.bodyMedium)
                     article?.let { Text("Article reconnu : ${it.title} (${Money.formatEuros(it.priceCents)})", style = MaterialTheme.typography.bodySmall) }
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (article == null && notice.kind == VintedEventKind.SALE) {
+                            TextButton(onClick = { pickForNotice = notice.id }) { Text("Choisir l'article vendu") }
+                        }
+                        if (notice.kind == VintedEventKind.SHIPPING) {
+                            TextButton(onClick = { onHandled(notice.id); onOpenSales() }) { Text("Ventes à expédier") }
+                        }
                         if (article != null) {
                             when (notice.kind) {
+                                VintedEventKind.SHIPPING -> {}
                                 VintedEventKind.SALE -> TextButton(onClick = { onHandled(notice.id); onOpenArticle(article.id) }) { Text("Enregistrer la vente") }
                                 VintedEventKind.OFFER -> TextButton(onClick = { onHandled(notice.id); onAssist(article.id, 1) }) { Text("Conseil d'offre") }
                                 VintedEventKind.MESSAGE -> TextButton(onClick = { onHandled(notice.id); onAssist(article.id, 0) }) { Text("Préparer la réponse") }

@@ -227,4 +227,39 @@ class RepositoryTest {
         repo.upsertImported(ImportedListing(222, url, "Bracelet doré", 500), sold = true)
         assertEquals(ArticleStatus.SOLD, repo.getArticle(first.articleId)!!.status)
     }
+
+    @Test
+    fun soldImportCreatesOneUndatedSaleAndKeywordsAreSplit() = runBlocking {
+        val listing = ImportedListing(
+            333, "https://www.vinted.fr/items/333-collier", "Collier", 1100,
+            description = "Joli collier doré.\n\ncollier chapelet dore acier medaille",
+            category = "Colliers", detailed = true,
+        )
+        val r = repo.upsertImported(listing, sold = true)
+        repo.upsertImported(listing, sold = true) // deuxième import : pas de deuxième vente
+        val sales = repo.sales.first()
+        assertEquals(1, sales.size)
+        assertEquals(1100L, sales.single().salePriceCents)
+        assertTrue(!sales.single().dateKnown)
+        val article = repo.getArticle(r.articleId)!!
+        assertEquals("Joli collier doré.", article.description)
+        assertEquals("collier chapelet dore acier medaille", article.keywords)
+        assertEquals("Colliers", article.category)
+
+        // Le coût saisi ensuite se reporte sur la vente importée.
+        repo.update(r.articleId, fields(price = 1100).copy(title = "Collier", costCents = 300, vintedUrl = listing.url))
+        assertEquals(300L, repo.sales.first().single().costCents)
+    }
+
+    @Test
+    fun cleanUpCreatesMissingSalesAndReclassifiesNotices() = runBlocking {
+        // Article vendu importé par une version précédente (sans vente).
+        val id = repo.create(fields().copy(vintedUrl = "https://www.vinted.fr/items/444-pull"))
+        repo.setStatus(id, ArticleStatus.SOLD)
+        repo.recordNotification("n1", now, "grognack", "grognack: Merci")
+        val report = repo.cleanUpImportedData()
+        assertEquals(1, report.salesCreated)
+        assertEquals(VintedEventKind.MESSAGE, repo.notices.first().single().kind)
+        assertEquals(0, repo.cleanUpImportedData().salesCreated) // idempotent
+    }
 }

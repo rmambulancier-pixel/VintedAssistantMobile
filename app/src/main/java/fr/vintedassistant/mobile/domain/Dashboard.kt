@@ -35,6 +35,10 @@ data class DashboardStats(
     val averageDaysToSell: Double?,
     val stagnant: List<StagnantArticle>,
     val categories: List<CategoryStats>,
+    /** Ventes sans date connue (importées de Vinted) : comptées dans le total, pas dans le mois. */
+    val undatedSalesCount: Int = 0,
+    /** Articles (en stock ou vendus) dont le coût d'achat n'est pas renseigné. */
+    val missingCostCount: Int = 0,
 )
 
 data class DashboardSettings(
@@ -68,10 +72,10 @@ fun computeDashboard(
     val counted = sales.filter { it.counted }
     val monthStart = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
         .withDayOfMonth(1).atStartOfDay(zone).toInstant().toEpochMilli()
-    val month = counted.filter { it.soldAt >= monthStart }
+    val month = counted.filter { it.dateKnown && it.soldAt >= monthStart }
     val rate = settings.contributionRateBp
 
-    fun daysToSell(s: Sale): Double? = s.listedAt?.let { (s.soldAt - it).coerceAtLeast(0L).toDouble() / DAY_MS }
+    fun daysToSell(s: Sale): Double? = if (!s.dateKnown) null else s.listedAt?.let { (s.soldAt - it).coerceAtLeast(0L).toDouble() / DAY_MS }
 
     val stagnant = stock
         .filter { it.status == ArticleStatus.ONLINE }
@@ -114,5 +118,7 @@ fun computeDashboard(
         averageDaysToSell = if (delays.isEmpty()) null else delays.average(),
         stagnant = stagnant,
         categories = categories,
+        undatedSalesCount = counted.count { !it.dateKnown },
+        missingCostCount = articles.count { it.costCents == 0L && it.status != ArticleStatus.WITHDRAWN },
     )
 }

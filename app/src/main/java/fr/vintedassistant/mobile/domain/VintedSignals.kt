@@ -50,6 +50,7 @@ data class VintedNotice(
 
 enum class VintedEventKind(val label: String) {
     SALE("Vente"),
+    SHIPPING("Expédition"),
     OFFER("Offre"),
     MESSAGE("Message"),
     FAVORITE("Favori"),
@@ -65,14 +66,22 @@ enum class VintedEventKind(val label: String) {
  * n'est pas documenté par Vinted : mots-clés larges, et « Autre » quand rien ne correspond.
  */
 object VintedNotificationClassifier {
+    // Ordre important : « s'est vendu… attend le colis » est une vente, pas une expédition.
     private val rules = listOf(
-        VintedEventKind.SALE to Regex("vendu|a achet|a été acheté|nouvelle commande|commande|bordereau|à expédier|envoie ton colis|paiement reçu"),
+        VintedEventKind.SALE to Regex("s'est vendu|s’est vendu|a été vendu|vendu !|a acheté|a été acheté|nouvelle commande|paiement reçu"),
+        VintedEventKind.SHIPPING to Regex("bordereau|étiquette d'envoi|expédi|dépose ton colis|point relais|mondial relay|relais colis|colissimo|chronopost|a été livré|colis livré|livraison"),
         VintedEventKind.OFFER to Regex("offre|propos[eé] .*€|contre-offre"),
         VintedEventKind.FAVORITE to Regex("favori|a aimé|aime ton|aiment ton|❤|coup de cœur"),
         VintedEventKind.MESSAGE to Regex("message|t'a écrit|a écrit|nouvelle conversation|répondu"),
     )
 
     fun classify(title: String, text: String): VintedEventKind {
+        // Message de conversation : « pseudo: texte », le titre étant le pseudo de l'autre membre.
+        val pseudo = title.trim()
+        if (pseudo.isNotEmpty() && !pseudo.contains(' ') && text.trim().startsWith("$pseudo:")) {
+            val body = text.trim().removePrefix("$pseudo:").lowercase()
+            return if (Regex("offre|propos[eé] .*€").containsMatchIn(body)) VintedEventKind.OFFER else VintedEventKind.MESSAGE
+        }
         val content = (title + " " + text).lowercase()
         return rules.firstOrNull { (_, regex) -> regex.containsMatchIn(content) }?.first ?: VintedEventKind.OTHER
     }
@@ -96,4 +105,26 @@ object VintedNotificationClassifier {
             .replace(Regex("\\p{Mn}+"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
+}
+
+/** Dates relatives affichées par Vinted (« Il y a une semaine », « il y a 3 jours »). */
+object RelativeDates {
+    private val UNITS = listOf(
+        Regex("minute") to 60_000L,
+        Regex("heure") to 3_600_000L,
+        Regex("jour") to DAY_MS,
+        Regex("semaine") to 7 * DAY_MS,
+        Regex("mois") to 30 * DAY_MS,
+        Regex("an") to 365 * DAY_MS,
+    )
+
+    /** Date estimée (millisecondes), ou null si le texte n'est pas reconnu. */
+    fun parse(text: String, now: Long): Long? {
+        val t = text.lowercase().trim()
+        if (!t.contains("il y a")) return if (t.contains("aujourd")) now else null
+        val amount = Regex("""\d+""").find(t)?.value?.toLongOrNull()
+            ?: if (Regex("""\b(une?|quelques)\b""").containsMatchIn(t)) 1L else return null
+        val unit = UNITS.firstOrNull { (r, _) -> r.containsMatchIn(t.substringAfter("il y a")) }?.second ?: return null
+        return now - amount * unit
+    }
 }

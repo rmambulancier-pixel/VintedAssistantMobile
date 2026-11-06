@@ -6,6 +6,8 @@ import fr.vintedassistant.mobile.data.importer.ExportCandidate
 import fr.vintedassistant.mobile.data.importer.ImportedListing
 import fr.vintedassistant.mobile.data.files.ImageDownloader
 import fr.vintedassistant.mobile.domain.VintedLinks
+import fr.vintedassistant.mobile.domain.ListingTemplates
+import fr.vintedassistant.mobile.domain.RelativeDates
 import fr.vintedassistant.mobile.data.importer.VintedExportParser
 import fr.vintedassistant.mobile.data.files.LabelStore
 import fr.vintedassistant.mobile.data.files.PhotoStore
@@ -113,6 +115,7 @@ class ArticleRepository(
         val current = articleDao.getById(id) ?: return@withTransaction
         val now = clock()
         articleDao.update(current.withFields(fields).copy(updatedAt = now))
+        if (current.costCents != fields.costCents) saleDao.syncCostForImported(id, fields.costCents)
         if (current.priceCents != fields.priceCents) {
             eventDao.insert(ListingEventEntity(articleId = id, type = ListingEventEntity.PRICE_CHANGED, at = now, priceCents = fields.priceCents))
         }
@@ -280,6 +283,8 @@ class ArticleRepository(
     suspend fun upsertImported(listing: ImportedListing, sold: Boolean): UpsertResult = db.withTransaction {
         val now = clock()
         val existing = articleDao.getAll().firstOrNull { VintedLinks.itemId(it.vintedUrl) == listing.itemId }
+        val (cleanDescription, foundKeywords) = ListingTemplates.splitKeywords(listing.description)
+        val added = RelativeDates.parse(listing.addedText, now)
         if (existing == null) {
             val id = articleDao.insert(
                 ArticleEntity(
@@ -293,12 +298,16 @@ class ArticleRepository(
                     size = listing.size,
                     condition = listing.condition,
                     color = listing.color,
-                    description = listing.description,
+                    category = listing.category,
+                    description = cleanDescription,
+                    keywords = foundKeywords,
                     vintedUrl = listing.url,
                     favoritesCount = listing.favorites,
                     viewsCount = listing.views,
+                    firstPublishedAt = if (sold) null else added,
                 )
             )
+            if (sold) articleDao.getById(id)?.let { ensureImportedSale(it) }
             return@withTransaction UpsertResult(id, created = true)
         }
         val status = ArticleStatus.fromLabel(existing.status)
@@ -317,7 +326,10 @@ class ArticleRepository(
                 size = existing.size.ifBlank { listing.size },
                 condition = existing.condition.ifBlank { listing.condition },
                 color = existing.color.ifBlank { listing.color },
-                description = existing.description.ifBlank { listing.description },
+                category = existing.category.ifBlank { listing.category },
+                description = existing.description.ifBlank { cleanDescription },
+                keywords = existing.keywords.ifBlank { foundKeywords },
+                firstPublishedAt = existing.firstPublishedAt ?: if (newStatus == ArticleStatus.SOLD) null else added,
                 vintedUrl = listing.url,
                 favoritesCount = listing.favorites ?: existing.favoritesCount,
                 viewsCount = listing.views ?: existing.viewsCount,
@@ -327,7 +339,95 @@ class ArticleRepository(
         if (newPrice != existing.priceCents) {
             eventDao.insert(ListingEventEntity(articleId = existing.id, type = ListingEventEntity.PRICE_CHANGED, at = now, priceCents = newPrice))
         }
+        if (newStatus == ArticleStatus.SOLD) articleDao.getById(existing.id)?.let { ensureImportedSale(it) }
         UpsertResult(existing.id, created = false)
+    }
+
+    /**
+     * Vente d'un article vendu sur Vinted avant l'import : prix affiché, date inconnue.
+     * Comptée dans le total, pas dans le mois. Créée une seule fois par article.
+     */
+    private suspend fun ensureImportedSale(article: ArticleEntity) {
+        if (article.id in saleDao.articleIdsWithSales()) return
+        saleDao.insert(
+            SaleEntity(
+                articleId = article.id,
+                title = article.title,
+                category = article.category,
+                salePriceCents = article.priceCents,
+                costCents = article.costCents,
+                feesCents = 0,
+                soldAt = clock(),
+                listedAt = article.firstPublishedAt,
+                buyer = "",
+                shippingStatus = ShippingStatus.DELIVERED.label,
+                shippedAt = null,
+                labelFile = null,
+                notes = "Importée de Vinted",
+                dateKnown = false,
+            )
+        )
+    }
+
+    data class CleanupReport(val salesCreated: Int, val keywordsMoved: Int, val photosRemoved: Int, val noticesReclassified: Int)
+
+    /**
+     * Remise en ordre des données importées par les versions précédentes, sans toucher à la saisie utilisateur :
+     * ventes manquantes des articles vendus, mots-clés restés dans la description, image répétée dans de
+     * nombreuses fiches (photo de profil), notifications à reclasser. Sans effet si tout est déjà propre.
+     */
+    suspend fun cleanUpImportedData(): CleanupReport {
+        var sales = 0
+        var keywords = 0
+        db.withTransaction {
+            val withSales = saleDao.articleIdsWithSales().toSet()
+            for (a in articleDao.getAll()) {
+                if (a.vintedUrl.isBlank()) continue
+                if (a.status == ArticleStatus.SOLD.label && a.id !in withSales) {
+                    ensureImportedSale(a)
+                    sales++
+                }
+                if (a.keywords.isBlank()) {
+                    val (desc, kw) = ListingTemplates.splitKeywords(a.description)
+                    if (kw.isNotEmpty()) {
+                        articleDao.update(a.copy(description = desc, keywords = kw))
+                        keywords++
+                    }
+                }
+            }
+        }
+        val photos = removeRepeatedPhotos()
+        var notices = 0
+        val articles = getAllArticles()
+        for (n in noticeDao.getAll()) {
+            val kind = VintedNotificationClassifier.classify(n.title, n.text).name
+            val match = n.articleId ?: VintedNotificationClassifier.matchArticle("${n.title} ${n.text}", articles)?.id
+            if (kind != n.kind || match != n.articleId) {
+                noticeDao.reclassify(n.id, kind, match)
+                notices++
+            }
+        }
+        return CleanupReport(sales, keywords, photos, notices)
+    }
+
+    /** Supprime une image identique présente dans au moins 5 fiches différentes (photo de profil, bannière). */
+    private suspend fun removeRepeatedPhotos(): Int {
+        val store = photoStore ?: return 0
+        val photos = photoDao.getAll()
+        val byHash = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            photos.groupBy { p ->
+                val f = store.file(p.fileName)
+                if (!f.exists()) "absent-${p.id}" else java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(f.readBytes()).joinToString("") { "%02x".format(it) }
+            }
+        }
+        var removed = 0
+        byHash.values.filter { group -> group.map { it.articleId }.distinct().size >= 5 }.flatten().forEach { p ->
+            photoDao.deleteById(p.id)
+            store.delete(p.fileName)
+            removed++
+        }
+        return removed
     }
 
     /** Télécharge les photos d'une annonce importée, seulement si la fiche n'en a encore aucune. Renvoie le nombre ajouté. */

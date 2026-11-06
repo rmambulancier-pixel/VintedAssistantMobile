@@ -91,6 +91,8 @@ data class SaleEntity(
     /** Nom du fichier du bordereau dans le dossier privé « labels ». */
     @ColumnInfo(name = "label_file") val labelFile: String?,
     val notes: String,
+    // --- v5 ---
+    @ColumnInfo(name = "date_known", defaultValue = "1") val dateKnown: Boolean = true,
 )
 
 /**
@@ -175,4 +177,5 @@ fun SaleEntity.toDomain() = Sale(
     shippingStatus = ShippingStatus.fromLabel(shippingStatus),
     labelPath = labelFile,
     notes = notes,
+    dateKnown = dateKnown,
 )

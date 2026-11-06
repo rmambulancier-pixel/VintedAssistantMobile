@@ -86,6 +86,20 @@ class MainViewModel(
                 Outcome.Failed("La reprise des données de l'ancienne version a échoué. Elles sont conservées.")
             }
             describe(outcome)?.let { _message.value = it }
+            // Remise en ordre des imports des versions précédentes (sans effet si déjà fait).
+            try {
+                val r = repository.cleanUpImportedData()
+                val parts = buildList {
+                    if (r.salesCreated > 0) add("${r.salesCreated} vente(s) passée(s) ajoutée(s) au tableau de bord")
+                    if (r.keywordsMoved > 0) add("mots-clés séparés de la description sur ${r.keywordsMoved} fiche(s)")
+                    if (r.photosRemoved > 0) add("${r.photosRemoved} photo(s) de profil retirée(s) des fiches")
+                }
+                if (parts.isNotEmpty()) _message.value = parts.joinToString(", ").replaceFirstChar { it.uppercase() } + "."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Non bloquant : l'application reste utilisable.
+            }
         }
     }
 
