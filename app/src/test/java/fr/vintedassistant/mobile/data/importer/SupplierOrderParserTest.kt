@@ -53,4 +53,48 @@ class SupplierOrderParserTest {
         assertNull(SupplierOrderParser.date("hier"))
         assertEquals(123L, SupplierOrderParser.money("EUR 1,23"))
     }
+
+    /** Commande réelle NHFR610132392734 (13 octobre 2026), telle que relevée sur la page. */
+    @Test
+    fun realNihaoOrder() {
+        val lines = listOf(
+            Triple("Bracelet en acier inoxydable 304 (6)", "€ 0.74", "1"),
+            Triple("Bracelet en acier inoxydable 304 (7)", "€ 0.74", "1"),
+            Triple("Collier chaîne de tennis argent en (4mm Argent | 18 pouces (46 cm))", "€ 0.50", "5"),
+            Triple("Bracelet unisexe en cuivre plaqué (Rouge | B26081706A-P)", "€ 0.76", "4"),
+            Triple("Collier homme style romain avec (Or)", "€ 0.46", "2"),
+            Triple("Bracelet en acier inoxydable 304 (4)", "€ 0.74", "1"),
+            Triple("Bracelet en acier inoxydable 304 (2)", "€ 0.74", "1"),
+            Triple("Pendentif Croix en acier inoxydab (Couleur Acier | 45cm)", "€ 0.86", "4"),
+            Triple("Collier chapelet unisexe en acier i (Vierge dorée | Acier Inoxydable)", "€ 1.27", "2"),
+            Triple("Collier femme modèle oval en aci (2)", "€ 1.95", "1"),
+            Triple("Bracelet Ange Femme en Acier In (Taille Unique | XLJ459)", "€ 0.54", "3"),
+            Triple("Collier chapelet unisexe en acier i (Vierge Marie Acier | Acier Inoxydable)", "€ 0.79", "2"),
+            Triple("Bracelet Ange Femme en Acier In (Taille Unique | XLY459)", "€ 0.43", "3"),
+        )
+        val json = JSONObject()
+            .put("url", "https://www.nihaojewelry.com/order/detail")
+            .put("ref", "NHFR610132392734")
+            .put("date", "13 oct. 2026, 11:30")
+            .put("items", JSONArray(lines.map { (n, p, q) -> item(n, p, q) }))
+            .put("shipping", "€ 9.22")
+            .put("total", "€ 24.27")
+            .toString()
+        val order = SupplierOrderParser.parse(json)!!
+        assertEquals(13, order.lines.size)
+        assertEquals(30, order.lines.sumOf { it.quantity })
+        assertEquals(2184L, order.itemsTotalCents) // prix après coupon
+        assertEquals(922L, order.shippingCents)
+        assertEquals(0L, order.feesCents) // le total affiché (24,27, avant coupon) ne crée pas de faux frais
+        val expected = LocalDateTime.of(2026, 10, 13, 11, 30).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        assertEquals(expected, order.orderedAt)
+
+        val landed = fr.vintedassistant.mobile.domain.LandedCost.allocate(
+            order.lines.map { fr.vintedassistant.mobile.domain.PurchaseLine(it.unitPriceCents, it.quantity) },
+            order.shippingCents + order.feesCents,
+        )
+        assertEquals(105L, landed[0]) // bracelet jonc 0,74 → 1,05
+        assertEquals(71L, landed[2]) // chaîne tennis 0,50 → 0,71
+        assertEquals(277L, landed[9]) // collier oval 1,95 → 2,77
+    }
 }

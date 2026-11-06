@@ -67,15 +67,19 @@ object SupplierPageScripts {
           const body=document.body.innerText||'';
           const lines=body.split('\n').map(s=>s.trim()).filter(Boolean);
           const out={url:location.href,ref:'',date:'',items:[],shipping:'',fees:'',total:''};
-          const ref=body.match(/(?:commande|order)\s*(?:n[°o]\.?|#|no\.?|number|id|numéro)?\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{5,})/i);
+          // Référence Nihaojewelry : « NHFR610132392734 » (pas le colis « …B01 », pas les Sku « NH57549748 »).
+          const nh=body.match(/\bNH[A-Z]{0,4}\d{9,}\b/);
+          const ref=nh?[nh[0],nh[0]]:body.match(/(?:n[°o]\.?\s*de\s*commande|order\s*(?:no\.?|number|#|id))\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{5,})/i);
           if(ref)out.ref=ref[1];
-          const d=body.match(/\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2}(?:\s+\d{1,2}:\d{2})?|\d{1,2}[-\/.]\d{1,2}[-\/.]\d{4}/);
-          if(d)out.date=d[0];
+          // Date : ligne qui suit « Date de commande », sinon premier format de date reconnu.
+          const dateRe=/\d{1,2}\s+[a-zéûôè]{3,9}\.?\s+\d{4}(?:,?\s+\d{1,2}:\d{2})?|\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2}(?:\s+\d{1,2}:\d{2})?|\d{1,2}[-\/.]\d{1,2}[-\/.]\d{4}/i;
+          for(let i=0;i<lines.length;i++){if(/date de commande|order date|date/i.test(lines[i])){const m=(lines[i]+' '+(lines[i+1]||'')).match(dateRe);if(m){out.date=m[0];break;}}}
+          if(!out.date){const d=body.match(dateRe);if(d)out.date=d[0];}
           function after(re){for(let i=0;i<lines.length;i++){if(re.test(lines[i])){const m=(lines[i]+' '+(lines[i+1]||'')).match(money);if(m)return m[0];}}return '';}
           out.shipping=after(/frais de port|frais d'exp|livraison|exp[ée]dition|shipping|freight/i);
           out.fees=after(/frais de service|frais de traitement|service fee|handling|taxe|tax|d[ée]douanement|customs|douane/i);
           for(let i=lines.length-1;i>=0;i--){
-            if(/total/i.test(lines[i])&&!/sous|sub|article|item|produit/i.test(lines[i])){
+            if(/total/i.test(lines[i])&&!/sous|sub|article|item|produit|poids|weight|masse|quantit/i.test(lines[i])){
               const m=(lines[i]+' '+(lines[i+1]||'')).match(money);if(m){out.total=m[0];break;}
             }
           }
@@ -88,8 +92,12 @@ object SupplierPageScripts {
             if(text.length>600)return; // bloc trop large : pas une ligne de produit
             seen.add(card);
             const parts=text.split('\n').map(s=>s.trim());
-            let name=(img.alt||'').trim();
-            if(name.length<4)name=parts.filter(s=>s.length>8&&!money.test(s)&&!/quantit|qty|qt[ée]|^x\s?\d/i.test(s))[0]||'';
+            // Nom : première ligne de texte du produit (le texte alternatif de l'image est souvent générique).
+            let name=parts.filter(s=>s.length>8&&!money.test(s)&&!/^sku|quantit|qty|qt[ée]|masse|poids|weight|^x\s?\d/i.test(s))[0]||(img.alt||'').trim();
+            name=name.replace(/\s*(\.\.\.|…)$/,'');
+            // Variante (« 4mm Argent|18 pouces ») tirée de la ligne Sku, pour distinguer les déclinaisons.
+            const sku=text.match(/sku\s*:\s*([A-Z0-9]+)\s*\|?\s*([^\n]*(?:\n(?!quantit|qt|masse|poids)[^\n]*)?)/i);
+            if(sku&&sku[2]){const v=sku[2].replace(/\s*\n\s*/g,' ').replace(/\|/g,' | ').trim();if(v)name+=' ('+v+')';}
             const q=text.match(/(?:qt[ée]|quantit[ée]|qty)\s*:?\s*(\d{1,4})/i)||text.match(/[x×]\s?(\d{1,4})\b/i)||text.match(/(\d{1,4})\s*(?:pcs|pi[èe]ces?)/i);
             const link=card.querySelector('a[href]');
             out.items.push({name:name.slice(0,200),price:pm[0],qty:q?q[1]:'1',image:img.currentSrc||img.src||'',url:link?link.href:''});
