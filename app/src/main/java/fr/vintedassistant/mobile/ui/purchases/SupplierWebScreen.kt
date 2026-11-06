@@ -88,19 +88,27 @@ object SupplierPageScripts {
             const r=img.getBoundingClientRect();if(r.width<40||r.width>420)return;
             let card=img;
             for(let i=0;i<6&&card.parentElement;i++){card=card.parentElement;if(money.test(card.innerText||''))break;}
-            const text=(card.innerText||'').trim();const pm=text.match(money);if(!pm||seen.has(card))return;
+            const text=(card.innerText||'').trim();if(!money.test(text)||seen.has(card))return;
+            // Prix payé = le plus bas de la carte (le prix barré d'origine est plus haut ; « Essai gratuit » = 0).
+            const all=text.match(new RegExp(money.source,'g'))||[];
+            const val=s=>parseFloat(s.replace(/[^\d,.]/g,'').replace(',','.'));
+            const pm=[all.reduce((a,b)=>val(b)<val(a)?b:a)];
             if(text.length>600)return; // bloc trop large : pas une ligne de produit
             seen.add(card);
             const parts=text.split('\n').map(s=>s.trim());
             // Nom : première ligne de texte du produit (le texte alternatif de l'image est souvent générique).
             let name=parts.filter(s=>s.length>8&&!money.test(s)&&!/^sku|quantit|qty|qt[ée]|masse|poids|weight|^x\s?\d/i.test(s))[0]||(img.alt||'').trim();
-            name=name.replace(/\s*(\.\.\.|…)$/,'');
+            name=name.replace(/^(essai gratuit|free trial|gratuit|nouveau|new|hot|promo)\s*/i,'').replace(/\s*(\.\.\.|…)$/,'');
             // Variante (« 4mm Argent|18 pouces ») tirée de la ligne Sku, pour distinguer les déclinaisons.
             const sku=text.match(/sku\s*:\s*([A-Z0-9]+)\s*\|?\s*([^\n]*(?:\n(?!quantit|qt|masse|poids)[^\n]*)?)/i);
             if(sku&&sku[2]){const v=sku[2].replace(/\s*\n\s*/g,' ').replace(/\|/g,' | ').trim();if(v)name+=' ('+v+')';}
             const q=text.match(/(?:qt[ée]|quantit[ée]|qty)\s*:?\s*(\d{1,4})/i)||text.match(/[x×]\s?(\d{1,4})\b/i)||text.match(/(\d{1,4})\s*(?:pcs|pi[èe]ces?)/i);
             const link=card.querySelector('a[href]');
-            out.items.push({name:name.slice(0,200),price:pm[0],qty:q?q[1]:'1',image:img.currentSrc||img.src||'',url:link?link.href:''});
+            // Image : les pages chargent les photos au défilement (data-src) ; on ignore les images « data: ».
+            const cands=[img.currentSrc,img.src,img.getAttribute('data-src'),img.getAttribute('data-original'),img.getAttribute('data-lazy-src'),
+              (img.getAttribute('srcset')||'').split(' ')[0]].filter(u=>u&&/^https:/.test(u));
+            out.items.push({name:name.slice(0,200),price:pm[0],qty:q?q[1]:'1',image:cands[0]||'',url:link?link.href:'',
+              free:/essai gratuit|free trial/i.test(text)});
           });
           return JSON.stringify(out);
         })();
@@ -140,7 +148,15 @@ private suspend fun open(session: Session, url: String): Boolean {
 }
 
 private suspend fun importCurrent(session: Session, repo: PurchaseRepository): PurchaseRepository.SaveResult? {
-    val json = session.web?.js(SupplierPageScripts.order) ?: return null
+    val web = session.web ?: return null
+    // Défilement progressif : la page ne charge les photos des produits qu'à l'écran.
+    repeat(12) { i ->
+        web.js("(function(){window.scrollTo(0, document.body.scrollHeight*${i + 1}/12);return '';})();")
+        delay(250)
+    }
+    web.js("(function(){window.scrollTo(0,0);return '';})();")
+    delay(400)
+    val json = web.js(SupplierPageScripts.order) ?: return null
     val order = runCatching { SupplierOrderParser.parse(json) }.getOrNull() ?: return null
     return repo.saveOrder(SUPPLIER_NIHAO, order)
 }
@@ -200,7 +216,8 @@ fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit) {
                         progress = "Lecture de la commande…"
                         val r = importCurrent(session, repo)
                             ?: return@runTask "Aucune commande reconnue sur cette page. Ouvre le détail d'une commande, ou lance le diagnostic et transmets-le."
-                        if (r.created) "Commande importée : ${r.items} produit(s). Retrouve-la dans Achats." else "Commande déjà importée."
+                        if (r.created) "Commande importée : ${r.items} produit(s). Retrouve-la dans Achats."
+                        else "Commande mise à jour : ${r.items} produit(s), rattachements conservés."
                     }
                 }) { Text("Importer cette commande") }
                 OutlinedButton(enabled = job == null, onClick = {
@@ -230,7 +247,7 @@ fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit) {
                             delay(1_500)
                         }
                         open(session, listUrl)
-                        "$created commande(s) importée(s), $known déjà connue(s)" + if (failed > 0) ", $failed non reconnue(s)." else "."
+                        "$created commande(s) importée(s), $known mise(s) à jour" + if (failed > 0) ", $failed non reconnue(s)." else "."
                     }
                 }) { Text("Importer toutes mes commandes") }
                 OutlinedButton(onClick = {

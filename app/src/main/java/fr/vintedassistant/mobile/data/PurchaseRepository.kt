@@ -53,7 +53,13 @@ class PurchaseRepository(
      */
     suspend fun saveOrder(supplier: String, order: ParsedOrder, downloadImages: Boolean = true): SaveResult {
         val existing = dao.findOrder(supplier, order.orderRef)
-        if (existing != null) return SaveResult(existing.id, created = false, items = dao.itemsOf(existing.id).size)
+        // Commande déjà importée : elle est remplacée par la nouvelle lecture, rattachements conservés
+        // (même position dans la commande), et le coût des fiches rattachées est recalculé.
+        val previousLinks: Map<Int, List<Long>> = if (existing == null) emptyMap() else
+            dao.itemsOf(existing.id).sortedBy { it.id }.mapIndexed { index, item ->
+                index to articleDao.linkedToPurchase(item.id).map { it.id }
+            }.toMap()
+        val oldImages = existing?.let { e -> dao.itemsOf(e.id).mapNotNull { it.imageFile } }.orEmpty()
         val landed = LandedCost.allocate(order.lines.map { PurchaseLine(it.unitPriceCents, it.quantity) }, order.shippingCents + order.feesCents)
         val images = order.lines.map { line ->
             if (!downloadImages || line.imageUrl.isBlank() || photoStore == null) null
@@ -65,6 +71,10 @@ class PurchaseRepository(
         }
         val now = clock()
         val orderId = db.withTransaction {
+            if (existing != null) {
+                previousLinks.values.flatten().forEach { aid -> articleDao.getById(aid)?.let { articleDao.update(it.copy(purchaseItemId = null)) } }
+                dao.deleteOrder(existing.id)
+            }
             val id = dao.insertOrder(
                 PurchaseOrderEntity(
                     supplier = supplier, orderRef = order.orderRef, orderedAt = order.orderedAt ?: now,
@@ -73,17 +83,24 @@ class PurchaseRepository(
                 )
             )
             order.lines.forEachIndexed { i, line ->
-                dao.insertItem(
+                val itemId = dao.insertItem(
                     PurchaseItemEntity(
                         orderId = id, name = line.name, imageFile = images[i], imageUrl = line.imageUrl,
                         productUrl = line.productUrl, unitPriceCents = line.unitPriceCents,
                         quantity = line.quantity, landedUnitCents = landed[i],
                     )
                 )
+                previousLinks[i].orEmpty().forEach { aid ->
+                    articleDao.getById(aid)?.let { a ->
+                        articleDao.update(a.copy(purchaseItemId = itemId, costCents = landed[i], updatedAt = now))
+                        saleDao.syncCostForImported(aid, landed[i])
+                    }
+                }
             }
             id
         }
-        return SaveResult(orderId, created = true, items = order.lines.size)
+        oldImages.forEach { photoStore?.delete(it) }
+        return SaveResult(orderId, created = existing == null, items = order.lines.size)
     }
 
     /** Rattache un article à un produit acheté : son coût d'achat devient le coût de revient unitaire. */

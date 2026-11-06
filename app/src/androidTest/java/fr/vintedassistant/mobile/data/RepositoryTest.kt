@@ -299,4 +299,24 @@ class RepositoryTest {
         assertEquals(216L, repo.getArticle(articleId)!!.costCents) // coût conservé
         assertTrue(purchases.orders.first().isEmpty())
     }
+
+    @Test
+    fun reimportUpdatesCostsAndKeepsLinks() = runBlocking {
+        val purchases = PurchaseRepository(db, photoStore = null, clock = { now })
+        // Première lecture erronée : prix d'origine au lieu de 0 €.
+        val wrong = ParsedOrder("NH-FREE", null, listOf(ParsedOrderLine("Bracelet trèfle", 270, 1, "", ""), ParsedOrderLine("Collier", 100, 1, "", "")), 879, 0, null, "")
+        purchases.saveOrder("Nihaojewelry", wrong, downloadImages = false)
+        val item = purchases.orders.first().single().items.first { it.name == "Bracelet trèfle" }
+        val articleId = repo.create(fields())
+        purchases.link(articleId, item.id)
+        assertEquals(item.landedUnitCents, repo.getArticle(articleId)!!.costCents)
+
+        // Relecture correcte : produits offerts, seul le port compte.
+        val right = wrong.copy(lines = wrong.lines.map { it.copy(unitPriceCents = 0) })
+        val r = purchases.saveOrder("Nihaojewelry", right, downloadImages = false)
+        assertTrue(!r.created)
+        val order = purchases.orders.first().single()
+        assertEquals(1, order.items.first { it.name == "Bracelet trèfle" }.linkedCount)
+        assertEquals(440L, repo.getArticle(articleId)!!.costCents) // 8,79 € / 2 pièces, arrondi
+    }
 }

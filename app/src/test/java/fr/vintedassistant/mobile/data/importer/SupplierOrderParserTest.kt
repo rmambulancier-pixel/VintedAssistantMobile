@@ -97,4 +97,27 @@ class SupplierOrderParserTest {
         assertEquals(71L, landed[2]) // chaîne tennis 0,50 → 0,71
         assertEquals(277L, landed[9]) // collier oval 1,95 → 2,77
     }
+
+    /** Commande « Essai gratuit » NHFR608202311892 : produits à 0 €, seul le port est payé. */
+    @Test
+    fun freeTrialOrderKeepsFreeItems() {
+        val json = JSONObject()
+            .put("ref", "NHFR608202311892")
+            .put("date", "20 août 2026, 23:05")
+            .put("items", JSONArray((1..24).map { i -> item("ESSAI GRATUITBracelet femme luxueux $i", "€ 0.00", "1") }))
+            .put("shipping", "€ 8.79")
+            .put("total", "€ 0.00")
+            .toString()
+        val order = SupplierOrderParser.parse(json)!!
+        assertEquals(24, order.lines.size)
+        assertEquals("Bracelet femme luxueux 1", order.lines[0].name) // badge retiré
+        assertEquals(0L, order.itemsTotalCents)
+        assertEquals(879L, order.shippingCents)
+        assertEquals(0L, order.feesCents)
+        assertEquals(8, java.time.Instant.ofEpochMilli(order.orderedAt!!).atZone(ZoneId.systemDefault()).monthValue)
+        val landed = fr.vintedassistant.mobile.domain.LandedCost.allocate(
+            order.lines.map { fr.vintedassistant.mobile.domain.PurchaseLine(it.unitPriceCents, it.quantity) }, order.shippingCents,
+        )
+        assertEquals(37L, landed[0]) // 8,79 € / 24 pièces
+    }
 }

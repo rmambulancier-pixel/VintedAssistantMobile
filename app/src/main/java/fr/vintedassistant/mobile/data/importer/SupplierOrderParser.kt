@@ -40,10 +40,12 @@ object SupplierOrderParser {
         val items = o.optJSONArray("items")
         if (items != null) for (i in 0 until items.length()) {
             val it = items.optJSONObject(i) ?: continue
-            val name = it.optString("name").trim().replace(Regex("\\s+"), " ").take(200)
+            val name = it.optString("name").trim().replace(Regex("\\s+"), " ")
+                .replace(Regex("^(?i)(essai gratuit|free trial)\\s*"), "").take(200)
             val price = money(it.optString("price")) ?: continue
             val qty = it.optString("qty").trim().toIntOrNull()?.coerceIn(1, 10_000) ?: 1
-            if (name.length < 3 || price <= 0) continue
+            // Prix 0 accepté : produit offert (« Essai gratuit »), son coût sera sa part du port.
+            if (name.length < 3 || price < 0) continue
             val image = it.optString("image").trim()
             if (!seen.add("$name|$price|$image")) continue
             lines += ParsedOrderLine(name, price, qty, image.takeIf { s -> s.startsWith("https://") }.orEmpty(), it.optString("url").trim())
