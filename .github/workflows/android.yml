@@ -2,7 +2,7 @@ name: Android APK
 
 on:
   push:
-    branches: [main, "vinted-assistant-mobile-v0.1"]
+    branches: [main, "vinted-assistant-mobile-v0.1", "dev/**"]
   pull_request:
   workflow_dispatch:
 
@@ -22,26 +22,24 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # Version de Gradle fixée par le wrapper du dépôt (gradle/wrapper).
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.13"
 
-      # GitHub-hosted Ubuntu runners already provide Android SDK command-line tools.
-      # Use the runner's installed SDK directly instead of downloading it via an action.
-      - name: Check Android SDK tools
-        run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          command -v sdkmanager
-          sdkmanager --version
-
+      # Le SDK Android est préinstallé sur les serveurs GitHub, mais sdkmanager
+      # n'est pas dans le PATH : on l'appelle par son chemin complet.
       - name: Install Android SDK packages
         run: |
-          yes | sdkmanager --licenses
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          "$SDKMANAGER" --version
+          yes | "$SDKMANAGER" --licenses > /dev/null
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Build debug APK
-        run: gradle --no-daemon assembleDebug
+      - name: Build debug APK and run unit tests
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleDebug testDebugUnitTest
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
