@@ -191,6 +191,12 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   « SHIP » est écarté). Produit sans titre : titre du lien ou de l'image, sinon « Produit <Sku> ».
   Réimport : le code produit prime sur le nom pour garder les rattachements.
 
+- **0.10.4** : rattachements rétablis depuis un export de l'application (Achats → « Rétablir les
+  rattachements d'un export », par référence de commande et code produit). Commande « en livraison »
+  seulement si le site annonce une livraison. Photo : images de moins de 50 px, non carrées, icônes,
+  panier, bandeaux et `data:` écartés. « Envoyer la page » : copie de la page fournisseur pour
+  diagnostic, sans scripts ni styles, adresse, e-mails et téléphones retirés.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

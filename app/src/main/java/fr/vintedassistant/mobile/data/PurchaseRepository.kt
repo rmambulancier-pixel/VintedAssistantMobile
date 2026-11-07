@@ -19,6 +19,7 @@ import fr.vintedassistant.mobile.domain.PurchaseOrder
 import fr.vintedassistant.mobile.domain.StockLedger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 
 /** Achats fournisseur : commandes, coût de revient, rattachement aux fiches. */
 class PurchaseRepository(
@@ -97,8 +98,8 @@ class PurchaseRepository(
                     supplier = supplier, orderRef = order.orderRef, orderedAt = order.orderedAt ?: now,
                     itemsTotalCents = order.itemsTotalCents, shippingCents = order.shippingCents, feesCents = order.feesCents,
                     url = order.url, importedAt = now,
-                    // Nouvelle commande : en livraison si le site annonce une livraison ou si elle a moins de 30 jours.
-                    received = received ?: existing?.received ?: !(order.deliveryEta.isNotBlank() || now - (order.orderedAt ?: now) < RECENT_MS),
+                    // En livraison seulement si le site annonce encore une livraison ; sans annonce, la commande est reçue.
+                    received = received ?: (order.deliveryEta.isBlank() || existing?.received == true),
                     deliveryEta = order.deliveryEta,
                 )
             )
@@ -122,6 +123,31 @@ class PurchaseRepository(
         oldImages.forEach { photoStore?.delete(it) }
         return SaveResult(orderId, created = existing == null, items = order.lines.size,
             pieces = order.lines.sumOf { it.quantity }, expectedPieces = order.expectedPieces)
+    }
+
+    /** Rattachement relu dans un export de l'application : fiche → produit (commande, code, nom). */
+    data class LinkBackup(val articleId: Long, val orderRef: String, val sku: String, val name: String)
+
+    /**
+     * Rétablit les rattachements d'un export précédent (après suppression et réimport d'une commande).
+     * Le produit est retrouvé par référence de commande et code produit (puis nom). Une fiche déjà
+     * rattachée, introuvable, ou un produit déjà complet ne sont pas touchés. Renvoie le nombre rétabli.
+     */
+    suspend fun restoreLinks(backup: List<LinkBackup>): Int {
+        var restored = 0
+        val orders = dao.observeOrders().first()
+        val items = dao.observeItems().first()
+        for (b in backup) {
+            val article = articleDao.getById(b.articleId) ?: continue
+            if (article.purchaseItemId != null && dao.getItem(article.purchaseItemId) != null) continue
+            val order = orders.firstOrNull { it.orderRef == b.orderRef } ?: continue
+            val candidates = items.filter { it.orderId == order.id && (b.sku.isBlank() || it.sku == b.sku) }
+            val item = (candidates.filter { StockLedger.normalize(it.name) == StockLedger.normalize(b.name) } + candidates)
+                .firstOrNull { articleDao.linkedToPurchase(it.id).size < it.quantity } ?: continue
+            link(article.id, item.id)
+            restored++
+        }
+        return restored
     }
 
     /** Commande reçue (pièces vendables) ou de nouveau marquée en cours de livraison. */
@@ -231,7 +257,4 @@ class PurchaseRepository(
         items.mapNotNull { it.imageFile }.forEach { photoStore?.delete(it) }
     }
 
-    private companion object {
-        const val RECENT_MS = 30L * 24 * 60 * 60 * 1000
-    }
 }

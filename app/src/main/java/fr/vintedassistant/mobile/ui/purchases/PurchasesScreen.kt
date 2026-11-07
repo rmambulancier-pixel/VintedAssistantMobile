@@ -72,6 +72,18 @@ fun PurchasesScreen(
         scope.launch { try { block() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { onMessage(error) } }
     }
 
+    val pickBackup = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) run("Fichier illisible : choisis un export « vinted-assistant-….zip ».") {
+            val c = context.container()
+            val links = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                context.contentResolver.openInputStream(uri)?.use { c.dataExport.readLinks(it) }
+            } ?: throw IllegalStateException()
+            val n = repo.restoreLinks(links)
+            onMessage("$n rattachement(s) rétabli(s) sur ${links.size} trouvé(s) dans l'export.")
+        }
+    }
+
+
     linkFor?.let { item ->
         LinkDialog(
             item = item,
@@ -125,6 +137,11 @@ fun PurchasesScreen(
                 "Pièces" to allItems.sumOf { it.quantity }.toString(),
                 "En livraison" to list.filter { !it.received }.sumOf { o -> o.items.sumOf { it.quantity } }.toString(),
             )
+        }
+        item {
+            OutlinedButton(onClick = { pickBackup.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) {
+                Text("Rétablir les rattachements d'un export")
+            }
         }
         item {
             Text(

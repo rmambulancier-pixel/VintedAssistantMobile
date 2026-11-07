@@ -106,12 +106,40 @@ class DataExport(
         }
     }
 
+    /** Rattachements contenus dans un export de l'application (fichier ZIP choisi par l'utilisateur). */
+    fun readLinks(zip: java.io.InputStream): List<PurchaseRepository.LinkBackup> {
+        var json: String? = null
+        java.util.zip.ZipInputStream(zip).use { z ->
+            while (true) {
+                val e = z.nextEntry ?: break
+                if (e.name == "donnees.json") { json = z.readBytes().toString(Charsets.UTF_8); break }
+            }
+        }
+        val root = JSONObject(json ?: throw IllegalArgumentException("Pas un export Vinted Assistant"))
+        val items = HashMap<Long, Pair<String, JSONObject>>()
+        val orders = root.optJSONArray("purchaseOrders") ?: JSONArray()
+        for (i in 0 until orders.length()) {
+            val o = orders.getJSONObject(i)
+            val list = o.optJSONArray("items") ?: continue
+            for (j in 0 until list.length()) list.getJSONObject(j).let { items[it.getLong("id")] = o.optString("ref") to it }
+        }
+        val out = mutableListOf<PurchaseRepository.LinkBackup>()
+        val articles = root.optJSONArray("articles") ?: JSONArray()
+        for (i in 0 until articles.length()) {
+            val a = articles.getJSONObject(i)
+            if (a.isNull("purchaseItemId")) continue
+            val (ref, item) = items[a.getLong("purchaseItemId")] ?: continue
+            out += PurchaseRepository.LinkBackup(a.getLong("id"), ref, item.optString("sku"), item.optString("name"))
+        }
+        return out
+    }
+
     /** Menu de partage Android (Claude, e-mail, Drive…). */
-    fun shareIntent(file: File): Intent {
+    fun shareIntent(file: File, mime: String = "application/zip"): Intent {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         return Intent.createChooser(
             Intent(Intent.ACTION_SEND)
-                .setType("application/zip")
+                .setType(mime)
                 .putExtra(Intent.EXTRA_STREAM, uri)
                 .putExtra(Intent.EXTRA_SUBJECT, file.name)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),

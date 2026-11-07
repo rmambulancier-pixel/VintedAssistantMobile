@@ -469,4 +469,32 @@ class RepositoryTest {
         assertEquals(0, again.salesDated + again.salesAdded)
         assertEquals(before + 2, repo.articles.first().size)
     }
+
+    @Test
+    fun linksAreRestoredAfterDeleteAndReimport() = runBlocking {
+        val purchases = PurchaseRepository(db, photoStore = null, clock = { now })
+        val order = ParsedOrder("NHFR608", 1_000L, listOf(
+            ParsedOrderLine("Bracelet cœur (Vert)", 0, 1, "", "", sku = "NH53003570"),
+            ParsedOrderLine("Bracelet cœur (Rose)", 0, 1, "", "", sku = "NH53003567"),
+        ), 879, 0, null, "")
+        purchases.saveOrder("Nihaojewelry", order, downloadImages = false)
+        assertTrue(purchases.orders.first().single().received) // aucune livraison annoncée : reçue
+        val a = repo.create(fields())
+        val b = repo.create(fields())
+        val items = purchases.orders.first().single().items
+        purchases.link(a, items.first { it.sku == "NH53003570" }.id)
+        val backup = listOf(
+            PurchaseRepository.LinkBackup(a, "NHFR608", "NH53003570", "Bracelet cœur (Vert) Order Qty : 1"),
+            PurchaseRepository.LinkBackup(b, "NHFR608", "NH53003567", "Bracelet cœur (Rose)"),
+            PurchaseRepository.LinkBackup(b, "NHFR608", "NH53003567", "Bracelet cœur (Rose)"), // doublon : ignoré
+        )
+        purchases.deleteOrder(purchases.orders.first().single().id)
+        purchases.saveOrder("Nihaojewelry", order, downloadImages = false)
+        assertEquals(2, purchases.restoreLinks(backup))
+        val restored = purchases.orders.first().single().items
+        assertEquals(1, restored.first { it.sku == "NH53003570" }.linkedCount)
+        assertEquals(1, restored.first { it.sku == "NH53003567" }.linkedCount)
+        assertEquals(440L, repo.getArticle(a)!!.costCents) // nouveau coût de revient : 8,79 € / 2
+        assertEquals(0, purchases.restoreLinks(backup)) // déjà fait
+    }
 }

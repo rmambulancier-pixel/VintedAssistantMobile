@@ -90,12 +90,17 @@ object SupplierPageScripts {
           const seen=new Set();
           // Photo du produit : la plus grande image à peu près carrée ; les bandeaux larges (« SHIP ») et les icônes sont écartés.
           function bestImg(card){
-            const imgs=Array.from(card.querySelectorAll('img'));
-            const ratio=i=>{const r=i.getBoundingClientRect();const w=r.width||i.naturalWidth,h=r.height||i.naturalHeight;return w&&h?w/h:1;};
+            const urls=i=>[i.currentSrc,i.src,i.getAttribute('data-src'),i.getAttribute('data-original'),i.getAttribute('data-lazy-src'),
+              (i.getAttribute('srcset')||'').split(' ')[0]].filter(u=>u&&/^https:/.test(u));
+            const bad=/icon|cart|panier|badge|logo|flag|sprite|ship|\.svg|\.gif/i;
             const area=i=>{const r=i.getBoundingClientRect();return r.width*r.height;};
-            const ok=imgs.filter(i=>ratio(i)<=1.6&&ratio(i)>=0.6&&!/icon|badge|logo|flag|sprite|ship/i.test((i.currentSrc||i.src||'')+(i.className||'')));
-            const shown=ok.filter(i=>area(i)>=1600).sort((a,b)=>area(b)-area(a));
-            return shown[0]||ok.find(i=>i.getAttribute('data-src')||i.getAttribute('data-original'))||ok[0]||null;
+            const ok=Array.from(card.querySelectorAll('img')).filter(i=>{
+              const r=i.getBoundingClientRect();
+              if(r.width&&r.height&&(r.width<50||r.height<50||r.width/r.height>1.6||r.height/r.width>1.6))return false;
+              const u=urls(i);
+              return u.length>0&&!u.some(x=>bad.test(x))&&!bad.test((i.className||'')+' '+(i.alt||''));
+            });
+            return ok.sort((x,y)=>area(y)-area(x))[0]||null;
           }
           function readCard(card,img,nameBlock){
             const text=(card.innerText||'').trim();
@@ -143,6 +148,34 @@ object SupplierPageScripts {
             readCard(card,img,card);
           });
           return JSON.stringify(out);
+        })();
+    """.trimIndent()
+
+    /**
+     * Copie de la page affichée pour diagnostic : structure et textes des produits, sans scripts ni styles.
+     * Adresse, e-mails et numéros de téléphone sont retirés.
+     */
+    val pageCopy: String = """
+        (function(){
+          const root=document.body.cloneNode(true);
+          root.querySelectorAll('script,style,noscript,iframe,svg,link,meta').forEach(e=>e.remove());
+          // Adresse : le bloc qui suit le libellé est vidé (ou tout le bloc s'il ne contient que l'adresse).
+          const label=/^(adresse de livraison|adresse|shipping address|delivery address|address)\s*:?$/i;
+          Array.from(root.querySelectorAll('*')).filter(e=>label.test((e.textContent||'').trim())).forEach(e=>{
+            const box=e.parentElement;
+            const txt=box?(box.textContent||''):'';
+            if(box&&box!==root&&txt.length<400&&!/sku|order|commande|total|livraison pr|m[ée]thode|method/i.test(txt.replace(e.textContent,''))){box.textContent='[adresse retirée]';return;}
+            let n=e.nextElementSibling;for(let k=0;k<4&&n;k++){n.textContent='[adresse retirée]';n=n.nextElementSibling;if(n&&/livraison|shipping|method|m[ée]thode|date|order/i.test(n.textContent||''))break;}
+          });
+          root.querySelectorAll('*').forEach(e=>{
+            Array.from(e.attributes).forEach(a=>{
+              if(!/^(class|src|data-src|data-original|srcset|href|alt|title|style)$/.test(a.name))e.removeAttribute(a.name);
+              else if(/^data:/.test(a.value))e.setAttribute(a.name,'data:…');
+            });
+          });
+          let html=root.innerHTML;
+          html=html.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g,'[e-mail]').replace(/(?:\+33|\b0)[1-9](?:[\s.-]?\d{2}){4}\b/g,'[numéro]');
+          return location.href.split('?')[0]+'\n'+html.slice(0,1500000);
         })();
     """.trimIndent()
 
@@ -289,6 +322,21 @@ fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit) {
                 OutlinedButton(onClick = {
                     scope.launch { diagnostic = session.web?.js(VintedPageScripts.diagnostic) ?: "Diagnostic impossible." }
                 }) { Text("Diagnostic") }
+                OutlinedButton(onClick = {
+                    scope.launch {
+                        val html = session.web?.js(SupplierPageScripts.pageCopy)
+                        if (html.isNullOrBlank()) { status = "Copie de la page impossible."; return@launch }
+                        try {
+                            val file = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                val dir = java.io.File(context.cacheDir, "exports").apply { mkdirs() }
+                                java.io.File(dir, "page-nihaojewelry.html").apply { writeText(html) }
+                            }
+                            context.startActivity(context.container().dataExport.shareIntent(file, "text/html"))
+                        } catch (e: Exception) {
+                            status = "Copie de la page impossible."
+                        }
+                    }
+                }) { Text("Envoyer la page") }
             }
             progress?.let { p ->
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
