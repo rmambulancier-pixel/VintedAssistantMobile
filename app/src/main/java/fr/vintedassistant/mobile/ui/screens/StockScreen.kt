@@ -490,7 +490,7 @@ private fun LotPickerDialog(
         entries = entries.map { (p, lot) ->
             Triple(
                 p.imageFile,
-                p.name,
+                variantFirst(p.name),
                 "Commande du ${dateFormat.format(Date(lot.orderedAt))} • ${lot.remaining} libre(s) • revient ${Money.formatEuros(lot.landedUnitCents)}",
             )
         },
@@ -572,4 +572,11 @@ fun ArticleRow(
             trailing?.invoke()
         }
     }
+}
+
+/** « Collier … (Or) » devient « [Or] Collier … » : la variante reste visible quand le nom est coupé. */
+private fun variantFirst(name: String): String {
+    val m = Regex("""^(.*?)\s*\(([^()]*(?:\([^()]*\))?[^()]*)\)\s*$""").find(name) ?: return name
+    val variant = m.groupValues[2].trim()
+    return if (variant.isEmpty()) name else "[$variant] ${m.groupValues[1].trim()}"
 }
