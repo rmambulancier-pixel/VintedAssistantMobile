@@ -295,7 +295,8 @@ class RepositoryTest {
         assertEquals(216L, draft.costCents)
         assertEquals(2, purchases.orders.first().single().items.first { it.id == bracelet.id }.linkedCount)
 
-        purchases.deleteOrder(saved.orderId)
+        // Le réimport a remplacé la commande : on supprime la commande actuelle.
+        purchases.deleteOrder(purchases.orders.first().single().id)
         assertEquals(216L, repo.getArticle(articleId)!!.costCents) // coût conservé
         assertTrue(purchases.orders.first().isEmpty())
     }
