@@ -224,6 +224,24 @@ fun VintedWebScreen(
                         diagnostic = VintedPageScripts.decode(r) ?: "Diagnostic impossible sur cette page."
                     }
                 }) { Text("Diagnostic") }
+                OutlinedButton(onClick = {
+                    // Copie de la page pour diagnostic : sans scripts ni styles, adresse, e-mails et téléphones retirés.
+                    session.webView?.evaluateJavascript(fr.vintedassistant.mobile.ui.purchases.SupplierPageScripts.pageCopy) { r ->
+                        val html = VintedPageScripts.decode(r)
+                        if (html.isNullOrBlank()) { status = "Copie de la page impossible."; return@evaluateJavascript }
+                        scope.launch {
+                            try {
+                                val file = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    val dir = java.io.File(context.cacheDir, "exports").apply { mkdirs() }
+                                    java.io.File(dir, "page-vinted.html").apply { writeText(html) }
+                                }
+                                context.startActivity(context.container().dataExport.shareIntent(file, "text/html"))
+                            } catch (e: Exception) {
+                                status = "Copie de la page impossible."
+                            }
+                        }
+                    }
+                }) { Text("Envoyer la page") }
                 TextButton(onClick = {
                     CookieManager.getInstance().removeAllCookies(null)
                     WebStorage.getInstance().deleteAllData()
