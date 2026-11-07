@@ -16,6 +16,9 @@ data class StockLot(
     val landedUnitCents: Long,
     val quantity: Int,
     val linkedCount: Int,
+    /** Faux tant que la commande est en cours de livraison. */
+    val received: Boolean = true,
+    val deliveryEta: String = "",
 ) {
     /** Pièces de ce lot qui n'ont encore aucune fiche. */
     val remaining: Int get() = (quantity - linkedCount).coerceAtLeast(0)
@@ -35,7 +38,10 @@ data class StockProduct(
     val articles: List<Article>,
 ) {
     val bought: Int get() = lots.sumOf { it.quantity }
-    val notListed: Int get() = lots.sumOf { it.remaining }
+    /** Pièces reçues, sans fiche : prêtes à être mises en vente. */
+    val notListed: Int get() = lots.filter { it.received }.sumOf { it.remaining }
+    /** Pièces commandées, pas encore reçues. */
+    val inTransit: Int get() = lots.filter { !it.received }.sumOf { it.remaining }
     val drafts: Int get() = articles.count { it.status == ArticleStatus.DRAFT }
     val forSale: Int get() = articles.count { it.status == ArticleStatus.ONLINE || it.status == ArticleStatus.RESERVED }
     val sold: Int get() = articles.count { it.status == ArticleStatus.SOLD }
@@ -45,7 +51,7 @@ data class StockProduct(
     val overLinked: Boolean get() = articles.size > bought
 
     /** Lot utilisé pour la prochaine fiche (le plus ancien qui a encore des pièces libres). */
-    val nextLot: StockLot? get() = lots.firstOrNull { it.remaining > 0 }
+    val nextLot: StockLot? get() = lots.firstOrNull { it.received && it.remaining > 0 }
 
     /** Vrai si le même bijou a été payé à des prix différents selon la commande. */
     val costVaries: Boolean get() = lots.map { it.landedUnitCents }.distinct().size > 1
@@ -66,9 +72,13 @@ data class StockOverview(
     val forSale: Int get() = products.sumOf { it.forSale }
     val sold: Int get() = products.sumOf { it.sold }
     val withdrawn: Int get() = products.sumOf { it.withdrawn }
+    val inTransit: Int get() = products.sumOf { it.inTransit }
 
-    /** Valeur d'achat des pièces pas encore en vente. */
-    val notListedValueCents: Long get() = products.sumOf { p -> p.lots.sumOf { it.remaining * it.landedUnitCents } }
+    /** Valeur d'achat des pièces reçues pas encore en vente. */
+    val notListedValueCents: Long get() = products.sumOf { p -> p.lots.filter { it.received }.sumOf { it.remaining * it.landedUnitCents } }
+
+    /** Valeur d'achat des pièces en cours de livraison. */
+    val inTransitValueCents: Long get() = products.sumOf { p -> p.lots.filter { !it.received }.sumOf { it.remaining * it.landedUnitCents } }
 
     fun productOf(article: Article): StockProduct? =
         article.purchaseItemId?.let { id -> products.firstOrNull { p -> p.lots.any { it.itemId == id } } }
@@ -76,8 +86,27 @@ data class StockOverview(
 
 object StockLedger {
 
-    /** Clé d'un bijou : nom (variante comprise) sans accents ni casse, plus le fichier de la photo fournisseur. */
-    fun productKey(name: String, imageUrl: String): String {
+    /**
+     * Clé d'un bijou. Avec le code produit du fournisseur : code + variante (couleur, taille), sans les
+     * codes internes qui peuvent changer d'une commande à l'autre. Sans code : nom (variante comprise)
+     * sans accents ni casse, plus le fichier de la photo fournisseur.
+     */
+    fun productKey(name: String, imageUrl: String, sku: String = ""): String {
+        if (sku.isNotBlank()) return "sku:" + sku.uppercase() + "|" + variantKey(name)
+        return legacyKey(name, imageUrl)
+    }
+
+    /** Variante lue entre parenthèses en fin de nom, sans les codes du type « B26081706A-P ». */
+    fun variantKey(name: String): String {
+        val variant = VARIANT.find(name)?.groupValues?.get(1).orEmpty()
+        return normalize(variant).split(' ')
+            .filter { it.isNotEmpty() && !(it.length >= 6 && it.any(Char::isDigit) && it.any(Char::isLetter)) }
+            .joinToString(" ")
+    }
+
+    private val VARIANT = Regex("\\(([^()]*)\\)\\s*$")
+
+    private fun legacyKey(name: String, imageUrl: String): String {
         val image = imageUrl.substringBefore('?').substringBefore('#').substringAfterLast('/').lowercase()
         return normalize(name) + "|" + image
     }
@@ -95,7 +124,7 @@ object StockLedger {
         orders.sortedWith(compareBy<PurchaseOrder> { it.orderedAt }.thenBy { it.id }).forEach { order ->
             order.items.sortedBy { it.id }.forEach { item ->
                 knownItems += item.id
-                groups.getOrPut(productKey(item.name, item.imageUrl)) { mutableListOf() } += order to item
+                groups.getOrPut(productKey(item.name, item.imageUrl, item.sku)) { mutableListOf() } += order to item
             }
         }
         val products = groups.map { (key, entries) ->
@@ -104,6 +133,7 @@ object StockLedger {
                     itemId = i.id, orderId = o.id, orderRef = o.orderRef, supplier = o.supplier, orderedAt = o.orderedAt,
                     unitPriceCents = i.unitPriceCents, landedUnitCents = i.landedUnitCents,
                     quantity = i.quantity, linkedCount = byItem[i.id]?.size ?: 0,
+                    received = o.received, deliveryEta = o.deliveryEta,
                 )
             }
             val linked = entries.flatMap { (_, i) -> byItem[i.id].orEmpty() }

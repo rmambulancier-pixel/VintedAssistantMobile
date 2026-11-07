@@ -19,18 +19,20 @@ import androidx.room.RoomDatabase
  * - v4 (0.5.0) : favoris et vues relevés sur Vinted.
  * - v5 (0.6.0) : ventes importées sans date connue.
  * - v6 (0.7.0) : achats fournisseur et coût de revient.
+ * - v7 (0.9.0) : code produit fournisseur, commande reçue ou en cours de livraison.
  */
 @Database(
     entities = [
         ArticleEntity::class, PhotoEntity::class, SaleEntity::class, ListingEventEntity::class,
         VintedNotificationEntity::class, PurchaseOrderEntity::class, PurchaseItemEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
     autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5),
         AutoMigration(from = 5, to = 6),
+        AutoMigration(from = 6, to = 7),
     ],
 )
 abstract class VintedBoostDatabase : RoomDatabase() {

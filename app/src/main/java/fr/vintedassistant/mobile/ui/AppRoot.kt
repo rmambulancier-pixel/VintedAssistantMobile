@@ -296,6 +296,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                         relaunch = { templateId, itemId -> vm.relaunch(templateId, itemId) { created = it } },
                         draftFromPurchase = { itemId -> vm.draftFromPurchase(itemId, ::openEditor) },
                         link = { a, lot -> vm.linkToPurchase(a.id, lot.itemId, a.title, lot.landedUnitCents) },
+                        markReceived = { orderId -> vm.setOrderReceived(orderId, true) },
                     ),
                 )
                 Tab.REPUBLISH -> RepublishScreen(

@@ -66,7 +66,7 @@ object SupplierPageScripts {
           const money=/(?:€\s?\d{1,5}(?:[.,]\d{1,2})?|\d{1,5}(?:[.,]\d{1,2})?\s?€)/;
           const body=document.body.innerText||'';
           const lines=body.split('\n').map(s=>s.trim()).filter(Boolean);
-          const out={url:location.href,ref:'',date:'',items:[],shipping:'',fees:'',total:''};
+          const out={url:location.href,ref:'',date:'',items:[],shipping:'',fees:'',total:'',eta:''};
           // Référence Nihaojewelry : « NHFR610132392734 » (pas le colis « …B01 », pas les Sku « NH57549748 »).
           const nh=body.match(/\bNH[A-Z]{0,4}\d{9,}\b/);
           const ref=nh?[nh[0],nh[0]]:body.match(/(?:n[°o]\.?\s*de\s*commande|order\s*(?:no\.?|number|#|id))\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{5,})/i);
@@ -75,6 +75,8 @@ object SupplierPageScripts {
           const dateRe=/\d{1,2}\s+[a-zéûôè]{3,9}\.?\s+\d{4}(?:,?\s+\d{1,2}:\d{2})?|\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2}(?:\s+\d{1,2}:\d{2})?|\d{1,2}[-\/.]\d{1,2}[-\/.]\d{4}/i;
           for(let i=0;i<lines.length;i++){if(/date de commande|order date|date/i.test(lines[i])){const m=(lines[i]+' '+(lines[i+1]||'')).match(dateRe);if(m){out.date=m[0];break;}}}
           if(!out.date){const d=body.match(dateRe);if(d)out.date=d[0];}
+          // Livraison annoncée (« Prévu pour être livré le » puis la période) : commande pas encore reçue.
+          for(let i=0;i<lines.length;i++){if(/pr[ée]vu pour [êe]tre livr|livraison pr[ée]vue|estimated delivery|expected delivery/i.test(lines[i])){out.eta=(lines[i+1]||'').slice(0,60);break;}}
           function after(re){for(let i=0;i<lines.length;i++){if(re.test(lines[i])){const m=(lines[i]+' '+(lines[i+1]||'')).match(money);if(m)return m[0];}}return '';}
           out.shipping=after(/frais de port|frais d'exp|livraison|exp[ée]dition|shipping|freight/i);
           out.fees=after(/frais de service|frais de traitement|service fee|handling|taxe|tax|d[ée]douanement|customs|douane/i);
@@ -107,7 +109,7 @@ object SupplierPageScripts {
             // Image : les pages chargent les photos au défilement (data-src) ; on ignore les images « data: ».
             const cands=[img.currentSrc,img.src,img.getAttribute('data-src'),img.getAttribute('data-original'),img.getAttribute('data-lazy-src'),
               (img.getAttribute('srcset')||'').split(' ')[0]].filter(u=>u&&/^https:/.test(u));
-            out.items.push({name:name.slice(0,200),price:pm[0],qty:q?q[1]:'1',image:cands[0]||'',url:link?link.href:'',
+            out.items.push({name:name.slice(0,200),price:pm[0],qty:q?q[1]:'1',image:cands[0]||'',url:link?link.href:'',sku:sku?sku[1]:'',
               free:/essai gratuit|free trial/i.test(text)});
           });
           return JSON.stringify(out);

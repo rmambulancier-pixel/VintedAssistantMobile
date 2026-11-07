@@ -154,6 +154,17 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
     fournisseur », bilan « Mon stock », vues avec compteurs, rattachement dans les deux sens avec
     les choix les plus ressemblants en premier. Pas de changement de schéma.
 
+- **0.9** : base v7 (migration automatique 6 → 7, valeurs par défaut : les commandes déjà
+  enregistrées sont « reçues »).
+  - Code produit fournisseur (`sku`, lu sur la ligne « Sku: » de Nihaojewelry). Clé d'un bijou :
+    code + variante, sans les codes internes (lettres et chiffres mêlés, 6 caractères ou plus).
+    Sans code (commandes lues avant la 0.9) : ancienne clé nom + photo. Au réimport, les
+    rattachements suivent le code produit, puis la position.
+  - Commande reçue ou en cours de livraison (`received`, `delivery_eta`). Nouvelle commande en
+    livraison si le site annonce une livraison ou si elle a moins de 30 jours ; achat saisi à la
+    main reçu d'office ; état conservé au réimport. Pièces en livraison comptées à part, sans
+    fiche ni remise en vente possibles avant « J'ai reçu cette commande ».
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

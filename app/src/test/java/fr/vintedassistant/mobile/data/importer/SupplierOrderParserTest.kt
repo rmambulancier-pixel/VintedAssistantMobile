@@ -121,4 +121,24 @@ class SupplierOrderParserTest {
         )
         assertEquals(37L, landed[0]) // 8,79 € / 24 pièces
     }
+
+    @Test
+    fun readsSkuAndDeliveryWindow() {
+        val json = JSONObject()
+            .put("url", "https://www.nihaojewelry.com/order/detail?id=9")
+            .put("ref", "NHFR611")
+            .put("date", "7 nov. 2026, 13:19")
+            .put("eta", "mer. 25 nov.   - mar. 1 déc.")
+            .put("shipping", "€ 10.05").put("total", "€ 19.30")
+            .put("items", org.json.JSONArray().put(
+                JSONObject().put("name", "Bracelet unisexe en cuivre plaqué (Rouge | B26081706A-P)").put("price", "€ 0.84")
+                    .put("qty", "11").put("image", "https://img.nihaojewelry.com/a.jpg").put("url", "").put("sku", "nh59670045"),
+            ))
+            .toString()
+        val order = SupplierOrderParser.parse(json)!!
+        assertEquals("NH59670045", order.lines.single().sku)
+        assertEquals("mer. 25 nov. - mar. 1 déc.", order.deliveryEta)
+        assertEquals(0L, order.feesCents) // 0,01 € d'écart : arrondi, pas des frais
+        assertEquals(1005L, order.shippingCents)
+    }
 }

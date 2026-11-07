@@ -18,6 +18,8 @@ data class PurchaseItem(
     val linkedCount: Int,
     /** Adresse de la photo chez le fournisseur : sert à reconnaître le même bijou d'une commande à l'autre. */
     val imageUrl: String = "",
+    /** Code produit du fournisseur, vide s'il n'a pas été lu. */
+    val sku: String = "",
 ) {
     val remaining: Int get() = (quantity - linkedCount).coerceAtLeast(0)
 }
@@ -31,6 +33,9 @@ data class PurchaseOrder(
     val shippingCents: Long,
     val feesCents: Long,
     val items: List<PurchaseItem>,
+    /** Faux tant que la commande est en cours de livraison : ses pièces ne sont pas encore vendables. */
+    val received: Boolean = true,
+    val deliveryEta: String = "",
 ) {
     val totalCents: Long get() = itemsTotalCents + shippingCents + feesCents
 }

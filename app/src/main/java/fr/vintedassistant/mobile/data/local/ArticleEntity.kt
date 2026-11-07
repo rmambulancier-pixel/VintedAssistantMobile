@@ -128,6 +128,10 @@ data class PurchaseOrderEntity(
     @ColumnInfo(name = "fees_cents") val feesCents: Long,
     val url: String,
     @ColumnInfo(name = "imported_at") val importedAt: Long,
+    // --- v7 ---
+    /** Commande reçue : ses pièces peuvent être mises en vente. Les commandes antérieures à la v7 le sont. */
+    @ColumnInfo(defaultValue = "1") val received: Boolean = true,
+    @ColumnInfo(name = "delivery_eta", defaultValue = "") val deliveryEta: String = "",
 )
 
 /** Produit d'une commande fournisseur, avec son coût de revient unitaire (v6). */
@@ -146,6 +150,8 @@ data class PurchaseItemEntity(
     @ColumnInfo(name = "unit_price_cents") val unitPriceCents: Long,
     val quantity: Int,
     @ColumnInfo(name = "landed_unit_cents") val landedUnitCents: Long,
+    // --- v7 ---
+    @ColumnInfo(defaultValue = "") val sku: String = "",
 )
 
 /** Journal des publications, republications et changements de prix. */

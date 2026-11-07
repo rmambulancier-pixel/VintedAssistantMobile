@@ -219,6 +219,11 @@ class MainViewModel(
             _message.value = "« ${title.take(60)} » rattaché : coût d'achat ${fr.vintedassistant.mobile.domain.Money.formatEuros(costCents)}."
         }
 
+    fun setOrderReceived(orderId: Long, received: Boolean) = launchSafely("Mise à jour de la commande impossible.") {
+        purchases.setReceived(orderId, received)
+        _message.value = if (received) "Commande reçue : ses pièces peuvent être mises en vente." else "Commande remise en cours de livraison."
+    }
+
     fun unlinkPurchase(articleId: Long) = launchSafely("Détachement impossible.") { purchases.unlink(articleId) }
 
     private fun launchSafely(errorMessage: String, block: suspend () -> Unit) {

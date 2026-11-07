@@ -142,6 +142,9 @@ interface PurchaseDao {
     @Query("SELECT * FROM purchase_orders WHERE supplier = :supplier AND order_ref = :ref LIMIT 1")
     suspend fun findOrder(supplier: String, ref: String): PurchaseOrderEntity?
 
+    @Query("SELECT * FROM purchase_orders WHERE id = :id")
+    suspend fun getOrder(id: Long): PurchaseOrderEntity?
+
     @Query("SELECT * FROM purchase_items WHERE id = :id")
     suspend fun getItem(id: Long): PurchaseItemEntity?
 
@@ -156,6 +159,9 @@ interface PurchaseDao {
 
     @Update
     suspend fun updateItem(item: PurchaseItemEntity): Int
+
+    @Query("UPDATE purchase_orders SET received = :received WHERE id = :id")
+    suspend fun setReceived(id: Long, received: Boolean): Int
 
     @Query("DELETE FROM purchase_orders WHERE id = :id")
     suspend fun deleteOrder(id: Long): Int

@@ -101,7 +101,7 @@ fun PurchasesScreen(
             onSave = { order ->
                 manual = false
                 run("Enregistrement impossible.") {
-                    repo.saveOrder("Saisie manuelle", order, downloadImages = false)
+                    repo.saveOrder("Saisie manuelle", order, downloadImages = false, received = true)
                     onMessage("Achat enregistré.")
                 }
             },
@@ -123,7 +123,7 @@ fun PurchasesScreen(
             StatRow(
                 "Dépensé" to euros(list.sumOf { it.totalCents }),
                 "Pièces" to allItems.sumOf { it.quantity }.toString(),
-                "À rattacher" to allItems.sumOf { it.remaining }.toString(),
+                "En livraison" to list.filter { !it.received }.sumOf { o -> o.items.sumOf { it.quantity } }.toString(),
             )
         }
         item {
@@ -149,6 +149,24 @@ fun PurchasesScreen(
                         }
                         TextButton(onClick = { deleteOrder = order }) { Text("Supprimer") }
                     }
+                    if (order.received) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Reçue", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+                            TextButton(onClick = { run("Mise à jour impossible.") { repo.setReceived(order.id, false) } }) {
+                                Text("Pas encore reçue ?")
+                            }
+                        }
+                    } else {
+                        Text(
+                            "En cours de livraison" + (if (order.deliveryEta.isNotBlank()) ", prévue ${order.deliveryEta}" else "") +
+                                ". Les pièces ne pourront être mises en vente qu'à réception.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Button(onClick = { run("Mise à jour impossible.") { repo.setReceived(order.id, true); onMessage("Commande reçue.") } }) {
+                            Text("J'ai reçu cette commande")
+                        }
+                    }
                     order.items.forEach { item ->
                         HorizontalDivider()
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -164,7 +182,7 @@ fun PurchasesScreen(
                                     style = MaterialTheme.typography.labelSmall,
                                     color = if (item.remaining > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                                 )
-                                if (item.remaining > 0) {
+                                if (item.remaining > 0 && order.received) {
                                     Row {
                                         TextButton(onClick = { linkFor = item }) { Text("Rattacher") }
                                         TextButton(onClick = {

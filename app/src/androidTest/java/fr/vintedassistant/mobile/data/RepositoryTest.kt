@@ -274,7 +274,7 @@ class RepositoryTest {
             listOf(ParsedOrderLine("Bracelet trèfle", 120, 3, "", ""), ParsedOrderLine("Collier tennis", 240, 1, "", "")),
             shippingCents = 480, feesCents = 0, totalCents = null, url = "",
         )
-        val saved = purchases.saveOrder("Nihaojewelry", order, downloadImages = false)
+        val saved = purchases.saveOrder("Nihaojewelry", order, downloadImages = false, received = true)
         assertTrue(saved.created)
         assertTrue(!purchases.saveOrder("Nihaojewelry", order, downloadImages = false).created) // pas de doublon
 
@@ -364,5 +364,42 @@ class RepositoryTest {
             // attendu
         }
         assertEquals(0, StockLedger.build(purchases.orders.first(), repo.getAllArticles()).products.single().notListed)
+    }
+
+    @Test
+    fun recentOrderIsInTransitAndReimportMatchesBySku() = runBlocking {
+        val purchases = PurchaseRepository(db, photoStore = null, clock = { now })
+        val first = ParsedOrder(
+            "NHFR611", now - 60_000, listOf(
+                ParsedOrderLine("Cordon (Rouge | B1)", 84, 11, "", "", sku = "NH59670045"),
+                ParsedOrderLine("Croix (Or)", 100, 1, "", "", sku = "NH1111"),
+            ), 1005, 0, null, "", deliveryEta = "mer. 25 nov. - mar. 1 déc.",
+        )
+        purchases.saveOrder("Nihaojewelry", first, downloadImages = false)
+        var order = purchases.orders.first().single()
+        assertTrue(!order.received)
+        assertEquals("mer. 25 nov. - mar. 1 déc.", order.deliveryEta)
+        val cordon = order.items.first { it.sku == "NH59670045" }
+        val articleId = repo.create(fields())
+        purchases.link(articleId, cordon.id) // préparation possible, mise en vente non
+        try {
+            purchases.createDraft(cordon.id)
+            throw AssertionError("Commande pas encore reçue")
+        } catch (e: IllegalStateException) {
+            // attendu
+        }
+
+        purchases.setReceived(order.id, true)
+        // Relecture où l'ordre des produits a changé : le rattachement suit le code produit.
+        purchases.saveOrder("Nihaojewelry", first.copy(lines = first.lines.reversed()), downloadImages = false)
+        order = purchases.orders.first().single()
+        assertTrue(order.received) // conservé au réimport
+        assertEquals(1, order.items.first { it.sku == "NH59670045" }.linkedCount)
+        assertEquals(0, order.items.first { it.sku == "NH1111" }.linkedCount)
+        purchases.createDraft(order.items.first { it.sku == "NH59670045" }.id)
+
+        // Achat saisi à la main : reçu d'office.
+        purchases.saveOrder("Saisie manuelle", ParsedOrder("MANUEL-1", null, listOf(ParsedOrderLine("Bague", 300, 1, "", "")), 0, 0, null, ""), downloadImages = false, received = true)
+        assertTrue(purchases.orders.first().first { it.orderRef == "MANUEL-1" }.received)
     }
 }

@@ -79,6 +79,8 @@ class StockActions(
     val relaunch: (templateId: Long, itemId: Long?) -> Unit,
     val draftFromPurchase: (itemId: Long) -> Unit,
     val link: (article: Article, lot: StockLot) -> Unit,
+    /** La commande [orderId] est arrivée : ses pièces deviennent vendables. */
+    val markReceived: (orderId: Long) -> Unit,
 )
 
 @Composable
@@ -161,10 +163,14 @@ fun StockScreen(
         fun matches(vararg texts: String) = q.isEmpty() || texts.any { StockLedger.normalize(it).contains(q) }
 
         if (view == StockView.NOT_LISTED) {
-            val shown = stock.products.filter { it.notListed > 0 && matches(it.name, it.template?.title.orEmpty()) }
+            val shown = stock.products
+                .filter { (it.notListed > 0 || it.inTransit > 0) && matches(it.name, it.template?.title.orEmpty()) }
+                .sortedBy { if (it.notListed > 0) 0 else 1 }
             item {
                 Text(
-                    "Pièces achetées qui n'ont encore aucune fiche. Valeur d'achat : ${Money.formatEuros(stock.notListedValueCents)}.",
+                    "Pièces reçues qui n'ont encore aucune fiche : ${stock.notListed}, valeur d'achat ${Money.formatEuros(stock.notListedValueCents)}." +
+                        if (stock.inTransit > 0) " Puis les pièces en cours de livraison : ${stock.inTransit}, " +
+                            "${Money.formatEuros(stock.inTransitValueCents)}, à mettre en vente à réception." else "",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -185,6 +191,7 @@ fun StockScreen(
                     onDraft = { product.nextLot?.let { actions.draftFromPurchase(it.itemId) } },
                     onLink = { linkProduct = product },
                     onOpen = actions.openArticle,
+                    onReceived = actions.markReceived,
                 )
             }
         } else {
@@ -245,7 +252,8 @@ private fun StockSummary(stock: StockOverview, articles: List<Article>) {
                 )
             } else {
                 Text("${stock.bought} pièce(s) achetée(s) :", style = MaterialTheme.typography.bodyMedium)
-                SummaryLine("Pas encore en vente", stock.notListed, highlight = true)
+                if (stock.inTransit > 0) SummaryLine("En cours de livraison", stock.inTransit)
+                SummaryLine("Reçues, pas encore en vente", stock.notListed, highlight = true)
                 SummaryLine("En brouillon", stock.drafts)
                 SummaryLine("En ligne ou réservées", stock.forSale)
                 SummaryLine("Vendues", stock.sold)
@@ -290,6 +298,7 @@ private fun ProductCard(
     onDraft: () -> Unit,
     onLink: () -> Unit,
     onOpen: (Long) -> Unit,
+    onReceived: (Long) -> Unit,
 ) {
     val template = product.template
     ElevatedCard(Modifier.fillMaxWidth()) {
@@ -299,10 +308,15 @@ private fun ProductCard(
                 Column(Modifier.weight(1f)) {
                     Text(template?.title ?: product.name, style = MaterialTheme.typography.titleSmall, maxLines = 2)
                     if (template != null) Text("Fournisseur : ${product.name}", style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                    Text(
-                        "${product.notListed} pièce(s) pas encore en vente",
+                    if (product.notListed > 0) Text(
+                        "${product.notListed} pièce(s) reçue(s), pas encore en vente",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    if (product.inTransit > 0) Text(
+                        "${product.inTransit} pièce(s) en cours de livraison",
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                     )
                     val parts = buildList {
@@ -315,12 +329,30 @@ private fun ProductCard(
                 }
             }
             product.lots.forEach { lot ->
+                val date = dateFormat.format(Date(lot.orderedAt))
+                if (lot.received) {
+                    Text(
+                        "Commande du $date : ${lot.remaining} libre(s) sur ${lot.quantity}, revient ${Money.formatEuros(lot.landedUnitCents)} pièce",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (lot.remaining > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+                    )
+                } else {
+                    Text(
+                        "Commande du $date : ${lot.quantity} en livraison" +
+                            (if (lot.deliveryEta.isNotBlank()) " (prévue ${lot.deliveryEta})" else "") +
+                            ", revient ${Money.formatEuros(lot.landedUnitCents)} pièce",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedButton(onClick = { onReceived(lot.orderId) }) { Text("J'ai reçu cette commande") }
+                }
+            }
+            if (product.notListed == 0) {
                 Text(
-                    "Commande du ${dateFormat.format(Date(lot.orderedAt))} : ${lot.remaining} libre(s) sur ${lot.quantity}, " +
-                        "revient ${Money.formatEuros(lot.landedUnitCents)} pièce",
+                    "Mise en vente possible une fois la commande reçue.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (lot.remaining > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+                    color = MaterialTheme.colorScheme.outline,
                 )
+                return@Column
             }
             val next = product.nextLot
             if (product.costVaries && next != null) {
@@ -372,6 +404,14 @@ private fun ColumnScope.StockFooter(article: Article, product: StockProduct?, on
         return
     }
     if (article.status != ArticleStatus.SOLD) return
+    if (product.notListed == 0 && product.inTransit > 0) {
+        Text(
+            "${product.inTransit} en cours de livraison : remise en vente possible à réception.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        return
+    }
     if (product.notListed > 0) {
         Text(
             "Encore ${product.notListed} en stock, pas encore en vente",

@@ -16,6 +16,7 @@ import fr.vintedassistant.mobile.domain.LandedCost
 import fr.vintedassistant.mobile.domain.PurchaseItem
 import fr.vintedassistant.mobile.domain.PurchaseLine
 import fr.vintedassistant.mobile.domain.PurchaseOrder
+import fr.vintedassistant.mobile.domain.StockLedger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 
@@ -39,8 +40,10 @@ class PurchaseRepository(
                     id = o.id, supplier = o.supplier, orderRef = o.orderRef, orderedAt = o.orderedAt,
                     itemsTotalCents = o.itemsTotalCents, shippingCents = o.shippingCents, feesCents = o.feesCents,
                     items = byOrder[o.id].orEmpty().map {
-                        PurchaseItem(it.id, it.orderId, it.name, it.imageFile, it.unitPriceCents, it.quantity, it.landedUnitCents, linked[it.id] ?: 0, it.imageUrl)
+                        PurchaseItem(it.id, it.orderId, it.name, it.imageFile, it.unitPriceCents, it.quantity, it.landedUnitCents, linked[it.id] ?: 0, it.imageUrl, it.sku)
                     },
+                    received = o.received,
+                    deliveryEta = o.deliveryEta,
                 )
             }
         }
@@ -51,14 +54,23 @@ class PurchaseRepository(
      * Enregistre une commande (importée ou saisie). Une commande déjà connue (même fournisseur et
      * même référence) n'est pas dupliquée. Les photos des produits sont téléchargées si possible.
      */
-    suspend fun saveOrder(supplier: String, order: ParsedOrder, downloadImages: Boolean = true): SaveResult {
+    suspend fun saveOrder(supplier: String, order: ParsedOrder, downloadImages: Boolean = true, received: Boolean? = null): SaveResult {
         val existing = dao.findOrder(supplier, order.orderRef)
         // Commande déjà importée : elle est remplacée par la nouvelle lecture, rattachements conservés
-        // (même position dans la commande), et le coût des fiches rattachées est recalculé.
-        val previousLinks: Map<Int, List<Long>> = if (existing == null) emptyMap() else
-            dao.itemsOf(existing.id).sortedBy { it.id }.mapIndexed { index, item ->
-                index to articleDao.linkedToPurchase(item.id).map { it.id }
-            }.toMap()
+        // (même code produit et même nom, sinon même position), et le coût des fiches rattachées est recalculé.
+        val oldItems = existing?.let { e -> dao.itemsOf(e.id).sortedBy { it.id } }.orEmpty()
+        val used = HashSet<Long>()
+        val matched = order.lines.mapIndexed { index, line ->
+            val bySku = if (line.sku.isBlank()) null else oldItems.firstOrNull {
+                it.id !in used && it.sku == line.sku && StockLedger.normalize(it.name) == StockLedger.normalize(line.name)
+            }
+            (bySku ?: oldItems.getOrNull(index)?.takeIf { it.id !in used })?.also { used += it.id }
+        }
+        val previousLinks: Map<Int, List<Long>> = matched.mapIndexedNotNull { i, old ->
+            old?.let { i to articleDao.linkedToPurchase(it.id).map { a -> a.id } }
+        }.toMap()
+        // Fiches rattachées à un produit qui n'existe plus dans la nouvelle lecture : détachées, coût conservé.
+        val orphanLinks = oldItems.filter { it.id !in used }.flatMap { articleDao.linkedToPurchase(it.id).map { a -> a.id } }
         val oldImages = existing?.let { e -> dao.itemsOf(e.id).mapNotNull { it.imageFile } }.orEmpty()
         val landed = LandedCost.allocate(order.lines.map { PurchaseLine(it.unitPriceCents, it.quantity) }, order.shippingCents + order.feesCents)
         val images = order.lines.map { line ->
@@ -72,7 +84,7 @@ class PurchaseRepository(
         val now = clock()
         val orderId = db.withTransaction {
             if (existing != null) {
-                previousLinks.values.flatten().forEach { aid -> articleDao.getById(aid)?.let { articleDao.update(it.copy(purchaseItemId = null)) } }
+                (previousLinks.values.flatten() + orphanLinks).forEach { aid -> articleDao.getById(aid)?.let { articleDao.update(it.copy(purchaseItemId = null)) } }
                 dao.deleteOrder(existing.id)
             }
             val id = dao.insertOrder(
@@ -80,6 +92,9 @@ class PurchaseRepository(
                     supplier = supplier, orderRef = order.orderRef, orderedAt = order.orderedAt ?: now,
                     itemsTotalCents = order.itemsTotalCents, shippingCents = order.shippingCents, feesCents = order.feesCents,
                     url = order.url, importedAt = now,
+                    // Nouvelle commande : en livraison si le site annonce une livraison ou si elle a moins de 30 jours.
+                    received = received ?: existing?.received ?: !(order.deliveryEta.isNotBlank() || now - (order.orderedAt ?: now) < RECENT_MS),
+                    deliveryEta = order.deliveryEta,
                 )
             )
             order.lines.forEachIndexed { i, line ->
@@ -87,7 +102,7 @@ class PurchaseRepository(
                     PurchaseItemEntity(
                         orderId = id, name = line.name, imageFile = images[i], imageUrl = line.imageUrl,
                         productUrl = line.productUrl, unitPriceCents = line.unitPriceCents,
-                        quantity = line.quantity, landedUnitCents = landed[i],
+                        quantity = line.quantity, landedUnitCents = landed[i], sku = line.sku,
                     )
                 )
                 previousLinks[i].orEmpty().forEach { aid ->
@@ -101,6 +116,11 @@ class PurchaseRepository(
         }
         oldImages.forEach { photoStore?.delete(it) }
         return SaveResult(orderId, created = existing == null, items = order.lines.size)
+    }
+
+    /** Commande reçue (pièces vendables) ou de nouveau marquée en cours de livraison. */
+    suspend fun setReceived(orderId: Long, received: Boolean) {
+        dao.setReceived(orderId, received)
     }
 
     /** Rattache un article à un produit acheté : son coût d'achat devient le coût de revient unitaire. */
@@ -122,6 +142,7 @@ class PurchaseRepository(
     /** Crée une fiche brouillon depuis un produit acheté : nom, photo du fournisseur, coût de revient. Prix à fixer. */
     suspend fun createDraft(itemId: Long): Long {
         val item = dao.getItem(itemId) ?: throw IllegalStateException("Produit introuvable")
+        check(dao.getOrder(item.orderId)?.received != false) { "Commande pas encore reçue" }
         val now = clock()
         val photo = item.imageFile?.let { source ->
             val store = photoStore ?: return@let null
@@ -158,6 +179,7 @@ class PurchaseRepository(
     suspend fun duplicateForSale(templateId: Long, itemId: Long?): Long {
         val template = articleDao.getById(templateId) ?: throw IllegalStateException("Fiche introuvable")
         val item = itemId?.let { dao.getItem(it) ?: throw IllegalStateException("Achat introuvable") }
+        if (item != null) check(dao.getOrder(item.orderId)?.received != false) { "Commande pas encore reçue" }
         if (item != null) {
             val used = articleDao.linkedToPurchase(item.id).size
             check(used < item.quantity) { "Plus de pièce libre dans ce lot" }
@@ -201,5 +223,9 @@ class PurchaseRepository(
             dao.deleteOrder(orderId)
         }
         items.mapNotNull { it.imageFile }.forEach { photoStore?.delete(it) }
+    }
+
+    private companion object {
+        const val RECENT_MS = 30L * 24 * 60 * 60 * 1000
     }
 }

@@ -106,4 +106,40 @@ class StockLedgerTest {
         assertTrue(good > bad)
         assertFalse(StockLedger.similarity("", "x") > 0)
     }
+
+    @Test
+    fun skuGroupsAcrossOrdersEvenWhenNamesAndPhotosDiffer() {
+        val old = order(1, 1_000, PurchaseItem(10, 1, "Bracelet unisexe en cuivre plaqué or 14 carats (Rouge | B26081706A-P)", null, 76, 4, 108, 0, "https://a/1.jpg", "NH59670045"))
+        val new = order(2, 2_000, PurchaseItem(20, 2, "Bracelet unisexe en cuivre plaqué (Rouge | B26110201C-P)", null, 84, 11, 175, 0, "https://b/2.jpg", "NH59670045"))
+        val other = order(3, 3_000, PurchaseItem(30, 3, "Bracelet unisexe en cuivre plaqué (Noir | B26110201C-P)", null, 84, 2, 175, 0, "https://b/2.jpg", "NH59670045"))
+        val stock = StockLedger.build(listOf(old, new, other), emptyList())
+        assertEquals(2, stock.products.size) // rouge (deux commandes) et noir
+        assertEquals(15, stock.products.first { it.lots.size == 2 }.bought)
+    }
+
+    @Test
+    fun variantKeyDropsInternalCodes() {
+        assertEquals("rouge p", StockLedger.variantKey("Bracelet (Rouge | B26081706A-P)"))
+        assertEquals("4mm argent 18 pouces", StockLedger.variantKey("Collier (4mm Argent | 18 pouces)"))
+        assertEquals("", StockLedger.variantKey("Collier sans variante"))
+    }
+
+    @Test
+    fun piecesInTransitAreNotForSaleYet() {
+        val received = order(1, 1_000, item(10, 1, "Cordon", 4, 108))
+        val transit = order(2, 2_000, item(20, 2, "Cordon", 11, 175)).copy(received = false, deliveryEta = "mer. 25 nov. - mar. 1 déc.")
+        val sold = (1L..4L).map { article(it, ArticleStatus.SOLD, 10) }
+        val stock = StockLedger.build(listOf(received, transit), sold)
+        val p = stock.products.single()
+        assertEquals(0, p.notListed)
+        assertEquals(11, p.inTransit)
+        assertNull(p.nextLot) // rien à mettre en vente avant réception
+        assertEquals(11 * 175L, stock.inTransitValueCents)
+        assertEquals(0L, stock.notListedValueCents)
+        assertEquals("mer. 25 nov. - mar. 1 déc.", p.lots.last().deliveryEta)
+
+        val arrived = StockLedger.build(listOf(received, transit.copy(received = true)), sold).products.single()
+        assertEquals(11, arrived.notListed)
+        assertEquals(20L, arrived.nextLot?.itemId)
+    }
 }

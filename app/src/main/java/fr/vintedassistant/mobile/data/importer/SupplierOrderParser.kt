@@ -12,6 +12,8 @@ data class ParsedOrderLine(
     val quantity: Int,
     val imageUrl: String,
     val productUrl: String,
+    /** Code produit du fournisseur (« NH59670045 ») : identique d'une commande à l'autre. */
+    val sku: String = "",
 )
 
 data class ParsedOrder(
@@ -22,6 +24,8 @@ data class ParsedOrder(
     val feesCents: Long,
     val totalCents: Long?,
     val url: String,
+    /** Livraison annoncée par le fournisseur (« mer. 25 nov. - mar. 1 déc. »), vide si inconnue. */
+    val deliveryEta: String = "",
 ) {
     val itemsTotalCents: Long get() = lines.sumOf { it.unitPriceCents * it.quantity }
 }
@@ -48,7 +52,8 @@ object SupplierOrderParser {
             if (name.length < 3 || price < 0) continue
             val image = it.optString("image").trim()
             if (!seen.add("$name|$price|$image")) continue
-            lines += ParsedOrderLine(name, price, qty, image.takeIf { s -> s.startsWith("https://") }.orEmpty(), it.optString("url").trim())
+            val sku = it.optString("sku").trim().uppercase().takeIf { s -> s.matches(Regex("[A-Z0-9]{4,40}")) }.orEmpty()
+            lines += ParsedOrderLine(name, price, qty, image.takeIf { s -> s.startsWith("https://") }.orEmpty(), it.optString("url").trim(), sku)
         }
         if (lines.isEmpty()) return null
         val itemsTotal = lines.sumOf { it.unitPriceCents * it.quantity }
@@ -68,6 +73,7 @@ object SupplierOrderParser {
             feesCents = fees,
             totalCents = total,
             url = o.optString("url"),
+            deliveryEta = o.optString("eta").trim().replace(Regex("\\s+"), " ").take(60),
         )
     }
 
