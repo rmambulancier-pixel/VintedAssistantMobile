@@ -63,6 +63,7 @@ fun PurchasesScreen(
     var linkFor by remember { mutableStateOf<PurchaseItem?>(null) }
     var manual by remember { mutableStateOf(false) }
     var deleteOrder by remember { mutableStateOf<PurchaseOrder?>(null) }
+    var dateFor by remember { mutableStateOf<PurchaseOrder?>(null) }
     val dateFormat = remember { DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.FRANCE) }
     var info by remember { mutableStateOf<String?>(null) }
     @Suppress("UNUSED_VARIABLE") val external = onMessage
@@ -108,6 +109,16 @@ fun PurchasesScreen(
                     repo.link(a.id, item.id)
                     onMessage("Coût d'achat de « ${a.title} » : ${euros(item.landedUnitCents)}.")
                 }
+            },
+        )
+    }
+    dateFor?.let { o ->
+        OrderDateDialog(
+            initial = o.orderedAt,
+            onDismiss = { dateFor = null },
+            onPick = { at ->
+                dateFor = null
+                run("Date non enregistrée.") { repo.setOrderedAt(o.id, at); onMessage("Date de la commande ${o.orderRef} : ${dateFormat.format(Date(at))}.") }
             },
         )
     }
@@ -170,7 +181,10 @@ fun PurchasesScreen(
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("${order.supplier} • ${dateFormat.format(Date(order.orderedAt))}", style = MaterialTheme.typography.titleSmall)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("${order.supplier} • ${dateFormat.format(Date(order.orderedAt))}", style = MaterialTheme.typography.titleSmall)
+                                TextButton(onClick = { dateFor = order }) { Text("Modifier") }
+                            }
                             Text(
                                 "Réf. ${order.orderRef} • total ${euros(order.totalCents)} (port ${euros(order.shippingCents)}" +
                                     (if (order.feesCents > 0) ", frais ${euros(order.feesCents)}" else "") + ")",
@@ -328,4 +342,27 @@ private fun ManualOrderDialog(onDismiss: () -> Unit, onSave: (ParsedOrder) -> Un
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
     )
+}
+
+/** Calendrier pour corriger la date d'une commande (midi, heure du téléphone). */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun OrderDateDialog(initial: Long, onDismiss: () -> Unit, onPick: (Long) -> Unit) {
+    val zone = java.time.ZoneId.systemDefault()
+    val utcMidnight = java.time.Instant.ofEpochMilli(initial).atZone(zone).toLocalDate()
+        .atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+    val state = androidx.compose.material3.rememberDatePickerState(initialSelectedDateMillis = utcMidnight)
+    androidx.compose.material3.DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = {
+                val picked = state.selectedDateMillis ?: return@TextButton
+                val day = java.time.Instant.ofEpochMilli(picked).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+                onPick(day.atTime(12, 0).atZone(zone).toInstant().toEpochMilli())
+            }) { Text("Enregistrer") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
+    ) {
+        androidx.compose.material3.DatePicker(state = state)
+    }
 }

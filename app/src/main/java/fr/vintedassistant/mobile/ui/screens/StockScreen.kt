@@ -108,11 +108,12 @@ fun StockScreen(
         )
     }
     linkArticle?.let { article ->
-        ProductPickerDialog(
+        LotPickerDialog(
             article = article,
-            products = stock?.products.orEmpty().filter { it.notListed > 0 },
+            products = stock?.products.orEmpty(),
+            dateFormat = dateFormat,
             onDismiss = { linkArticle = null },
-            onPick = { p -> linkArticle = null; p.nextLot?.let { actions.link(article, it) } },
+            onPick = { lot -> linkArticle = null; actions.link(article, lot) },
         )
     }
     blindRelaunch?.let { a ->
@@ -226,6 +227,7 @@ fun StockScreen(
                     StockFooter(
                         article = article,
                         product = product,
+                        dateFormat = dateFormat,
                         onRelaunch = {
                             val lot = product?.nextLot
                             if (product == null) blindRelaunch = article else if (lot != null) actions.relaunch(article.id, lot.itemId)
@@ -394,7 +396,13 @@ private fun ProductCard(
 
 /** Sous une fiche : d'où elle vient et, pour un bijou vendu encore en stock, la remise en vente. */
 @Composable
-private fun ColumnScope.StockFooter(article: Article, product: StockProduct?, onRelaunch: () -> Unit, onLink: () -> Unit) {
+private fun ColumnScope.StockFooter(
+    article: Article,
+    product: StockProduct?,
+    dateFormat: DateFormat,
+    onRelaunch: () -> Unit,
+    onLink: () -> Unit,
+) {
     if (product == null) {
         Text("Aucun achat rattaché", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
         Row {
@@ -402,6 +410,17 @@ private fun ColumnScope.StockFooter(article: Article, product: StockProduct?, on
             if (article.status == ArticleStatus.SOLD) TextButton(onClick = onRelaunch) { Text("Remettre en vente") }
         }
         return
+    }
+    // D'où vient la fiche : commande et coût, modifiable si le rattachement est faux.
+    product.lots.firstOrNull { it.itemId == article.purchaseItemId }?.let { lot ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Achat : commande du ${dateFormat.format(Date(lot.orderedAt))}, ${Money.formatEuros(lot.landedUnitCents)}",
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.labelSmall,
+            )
+            TextButton(onClick = onLink) { Text("Changer d'achat") }
+        }
     }
     if (article.status != ArticleStatus.SOLD) return
     if (product.notListed == 0 && product.inTransit > 0) {
@@ -447,22 +466,36 @@ private fun ArticlePickerDialog(product: StockProduct, candidates: List<Article>
     )
 }
 
-/** Choix de l'achat d'où vient une fiche (bijoux qui ont des pièces libres, les plus ressemblants d'abord). */
+/**
+ * Choix de l'achat d'où vient une fiche : une ligne par commande qui a une pièce libre, pour choisir
+ * précisément le bon lot (même bijou acheté deux fois). Les plus ressemblants d'abord.
+ */
 @Composable
-private fun ProductPickerDialog(article: Article, products: List<StockProduct>, onDismiss: () -> Unit, onPick: (StockProduct) -> Unit) {
-    val sorted = remember(article, products) {
-        products.sortedByDescending { StockLedger.similarity(article.title, it.name) }
+private fun LotPickerDialog(
+    article: Article,
+    products: List<StockProduct>,
+    dateFormat: DateFormat,
+    onDismiss: () -> Unit,
+    onPick: (StockLot) -> Unit,
+) {
+    val entries = remember(article, products) {
+        products.flatMap { p -> p.lots.filter { it.received && it.remaining > 0 && it.itemId != article.purchaseItemId }.map { p to it } }
+            .sortedWith(compareByDescending<Pair<StockProduct, StockLot>> { StockLedger.similarity(article.title, it.first.name) }.thenBy { it.second.orderedAt })
     }
     PickerDialog(
         title = "De quel achat vient cette fiche ?",
         header = article.title,
         headerImage = article.photos.firstOrNull(),
-        empty = "Aucun bijou acheté n'a de pièce libre. Importe la commande correspondante dans « Achats fournisseur ».",
-        entries = sorted.map { p ->
-            Triple(p.imageFile, p.name, "${p.notListed} pièce(s) libre(s) • revient ${p.nextLot?.let { Money.formatEuros(it.landedUnitCents) } ?: "?"}")
+        empty = "Aucune pièce libre dans tes achats reçus. Importe la commande correspondante dans « Achats fournisseur ».",
+        entries = entries.map { (p, lot) ->
+            Triple(
+                p.imageFile,
+                p.name,
+                "Commande du ${dateFormat.format(Date(lot.orderedAt))} • ${lot.remaining} libre(s) • revient ${Money.formatEuros(lot.landedUnitCents)}",
+            )
         },
         onDismiss = onDismiss,
-        onPick = { i -> onPick(sorted[i]) },
+        onPick = { i -> onPick(entries[i].second) },
     )
 }
 

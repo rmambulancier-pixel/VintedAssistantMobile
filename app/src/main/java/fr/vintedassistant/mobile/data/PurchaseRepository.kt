@@ -95,7 +95,8 @@ class PurchaseRepository(
             }
             val id = dao.insertOrder(
                 PurchaseOrderEntity(
-                    supplier = supplier, orderRef = order.orderRef, orderedAt = order.orderedAt ?: now,
+                    supplier = supplier, orderRef = order.orderRef, // Date illisible à la relecture : on garde celle déjà connue (éventuellement corrigée à la main).
+                    orderedAt = order.orderedAt ?: existing?.orderedAt ?: now,
                     itemsTotalCents = order.itemsTotalCents, shippingCents = order.shippingCents, feesCents = order.feesCents,
                     url = order.url, importedAt = now,
                     // En livraison seulement si le site annonce encore une livraison ; sans annonce, la commande est reçue.
@@ -148,6 +149,11 @@ class PurchaseRepository(
             restored++
         }
         return restored
+    }
+
+    /** Date de commande corrigée à la main (conservée aux réimports si le site reste illisible). */
+    suspend fun setOrderedAt(orderId: Long, at: Long) {
+        dao.setOrderedAt(orderId, at)
     }
 
     /** Commande reçue (pièces vendables) ou de nouveau marquée en cours de livraison. */

@@ -166,6 +166,9 @@ interface PurchaseDao {
     @Update
     suspend fun updateItem(item: PurchaseItemEntity): Int
 
+    @Query("UPDATE purchase_orders SET ordered_at = :at WHERE id = :id")
+    suspend fun setOrderedAt(id: Long, at: Long): Int
+
     @Query("UPDATE purchase_orders SET received = :received WHERE id = :id")
     suspend fun setReceived(id: Long, received: Boolean): Int
 

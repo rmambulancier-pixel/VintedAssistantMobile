@@ -497,4 +497,18 @@ class RepositoryTest {
         assertEquals(440L, repo.getArticle(a)!!.costCents) // nouveau coût de revient : 8,79 € / 2
         assertEquals(0, purchases.restoreLinks(backup)) // déjà fait
     }
+
+    @Test
+    fun manualOrderDateSurvivesReimportWhenPageDateIsUnreadable() = runBlocking {
+        val purchases = PurchaseRepository(db, photoStore = null, clock = { now })
+        val order = ParsedOrder("NHFR608", null, listOf(ParsedOrderLine("Bracelet (Vert)", 0, 1, "", "", sku = "NH1")), 879, 0, null, "")
+        purchases.saveOrder("Nihaojewelry", order, downloadImages = false)
+        val id = purchases.orders.first().single().id
+        purchases.setOrderedAt(id, 123_456L)
+        purchases.saveOrder("Nihaojewelry", order, downloadImages = false)
+        assertEquals(123_456L, purchases.orders.first().single().orderedAt)
+        // Date lisible : elle l'emporte.
+        purchases.saveOrder("Nihaojewelry", order.copy(orderedAt = 999L), downloadImages = false)
+        assertEquals(999L, purchases.orders.first().single().orderedAt)
+    }
 }

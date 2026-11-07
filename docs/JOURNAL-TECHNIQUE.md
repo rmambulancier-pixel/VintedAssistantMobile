@@ -201,6 +201,10 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   vraie page ; la lecture par ligne « Sku: » ne sert plus qu'à rattraper les produits manqués. Icônes et
   bandeaux écartés. Rétablissement des rattachements : choix de fichier libre et erreur détaillée.
 
+- **0.10.6** : date de commande modifiable à la main (calendrier) et conservée au réimport si la page reste
+  illisible. Fiche rattachée : commande et coût affichés, « Changer d'achat ». Choix de l'achat par
+  commande (lot) et non plus par bijou, pour distinguer deux commandes du même bijou.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des
