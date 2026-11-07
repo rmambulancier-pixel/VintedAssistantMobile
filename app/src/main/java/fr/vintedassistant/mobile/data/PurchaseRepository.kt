@@ -48,7 +48,7 @@ class PurchaseRepository(
             }
         }
 
-    data class SaveResult(val orderId: Long, val created: Boolean, val items: Int)
+    data class SaveResult(val orderId: Long, val created: Boolean, val items: Int, val pieces: Int = 0, val expectedPieces: Int? = null)
 
     /**
      * Enregistre une commande (importée ou saisie). Une commande déjà connue (même fournisseur et
@@ -64,7 +64,11 @@ class PurchaseRepository(
             val bySku = if (line.sku.isBlank()) null else oldItems.firstOrNull {
                 it.id !in used && it.sku == line.sku && StockLedger.normalize(it.name) == StockLedger.normalize(line.name)
             }
-            (bySku ?: oldItems.getOrNull(index)?.takeIf { it.id !in used })?.also { used += it.id }
+            // Par position seulement si les codes produit sont inconnus : un produit nouvellement lu
+            // (ligne manquée à l'import précédent) ne doit pas prendre le rattachement d'un autre.
+            val byPosition = if (line.sku.isNotBlank() && oldItems.any { it.sku.isNotBlank() }) null
+                else oldItems.getOrNull(index)?.takeIf { it.id !in used }
+            (bySku ?: byPosition)?.also { used += it.id }
         }
         val previousLinks: Map<Int, List<Long>> = matched.mapIndexedNotNull { i, old ->
             old?.let { i to articleDao.linkedToPurchase(it.id).map { a -> a.id } }
@@ -115,7 +119,8 @@ class PurchaseRepository(
             id
         }
         oldImages.forEach { photoStore?.delete(it) }
-        return SaveResult(orderId, created = existing == null, items = order.lines.size)
+        return SaveResult(orderId, created = existing == null, items = order.lines.size,
+            pieces = order.lines.sumOf { it.quantity }, expectedPieces = order.expectedPieces)
     }
 
     /** Commande reçue (pièces vendables) ou de nouveau marquée en cours de livraison. */

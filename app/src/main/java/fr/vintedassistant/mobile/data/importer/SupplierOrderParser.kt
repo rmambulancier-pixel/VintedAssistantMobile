@@ -26,6 +26,8 @@ data class ParsedOrder(
     val url: String,
     /** Livraison annoncée par le fournisseur (« mer. 25 nov. - mar. 1 déc. »), vide si inconnue. */
     val deliveryEta: String = "",
+    /** Nombre de pièces annoncé par le site, pour vérifier que toutes les lignes ont été lues. */
+    val expectedPieces: Int? = null,
 ) {
     val itemsTotalCents: Long get() = lines.sumOf { it.unitPriceCents * it.quantity }
 }
@@ -52,7 +54,7 @@ object SupplierOrderParser {
             // Prix 0 accepté : produit offert (« Essai gratuit »), son coût sera sa part du port.
             if (name.length < 3 || price < 0) continue
             val image = it.optString("image").trim()
-            if (!seen.add("$name|$price|$image")) continue
+            if (!seen.add("$name|$price|$image|" + it.optString("sku"))) continue
             val sku = it.optString("sku").trim().uppercase().takeIf { s -> s.matches(Regex("[A-Z0-9]{4,40}")) }.orEmpty()
             lines += ParsedOrderLine(name, price, qty, image.takeIf { s -> s.startsWith("https://") }.orEmpty(), it.optString("url").trim(), sku)
         }
@@ -78,6 +80,7 @@ object SupplierOrderParser {
             feesCents = fees,
             totalCents = total,
             url = o.optString("url"),
+            expectedPieces = o.optString("count").trim().toIntOrNull()?.takeIf { n -> n in 1..10_000 },
             deliveryEta = o.optString("eta").trim().replace(Regex("\\s+"), " ").take(60),
         )
     }

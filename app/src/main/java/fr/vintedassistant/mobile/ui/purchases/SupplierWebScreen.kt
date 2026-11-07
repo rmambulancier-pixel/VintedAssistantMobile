@@ -66,7 +66,7 @@ object SupplierPageScripts {
           const money=/(?:€\s?\d{1,5}(?:[.,]\d{1,2})?|\d{1,5}(?:[.,]\d{1,2})?\s?€)/;
           const body=document.body.innerText||'';
           const lines=body.split('\n').map(s=>s.trim()).filter(Boolean);
-          const out={url:location.href,ref:'',date:'',items:[],shipping:'',fees:'',total:'',eta:''};
+          const out={url:location.href,ref:'',date:'',items:[],shipping:'',fees:'',total:'',eta:'',count:''};
           // Référence Nihaojewelry : « NHFR610132392734 » (pas le colis « …B01 », pas les Sku « NH57549748 »).
           const nh=body.match(/\bNH[A-Z]{0,4}\d{9,}\b/);
           const ref=nh?[nh[0],nh[0]]:body.match(/(?:n[°o]\.?\s*de\s*commande|order\s*(?:no\.?|number|#|id))\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{5,})/i);
@@ -85,32 +85,48 @@ object SupplierPageScripts {
               const m=(lines[i]+' '+(lines[i+1]||'')).match(money);if(m){out.total=m[0];break;}
             }
           }
+          // Nombre de pièces annoncé par le site (« La quantité de produit 24 ») : contrôle de la lecture.
+          for(let i=0;i<lines.length;i++){if(/quantit[ée]\s+de\s+produit|product\s+quantity|total\s+items/i.test(lines[i])){const m=(lines[i]+' '+(lines[i+1]||'')).match(/(\d{1,4})/);if(m){out.count=m[1];break;}}}
           const seen=new Set();
-          Array.from(document.querySelectorAll('img')).filter(vis).forEach(img=>{
-            const r=img.getBoundingClientRect();if(r.width<40||r.width>420)return;
-            let card=img;
-            for(let i=0;i<6&&card.parentElement;i++){card=card.parentElement;if(money.test(card.innerText||''))break;}
-            const text=(card.innerText||'').trim();if(!money.test(text)||seen.has(card))return;
+          function readCard(card,img,nameBlock){
+            const text=(card.innerText||'').trim();
+            if(!money.test(text)||text.length>600||seen.has(card))return;
+            seen.add(card);
             // Prix payé = le plus bas de la carte (le prix barré d'origine est plus haut ; « Essai gratuit » = 0).
             const all=text.match(new RegExp(money.source,'g'))||[];
             const val=s=>parseFloat(s.replace(/[^\d,.]/g,'').replace(',','.'));
             const pm=[all.reduce((a,b)=>val(b)<val(a)?b:a)];
-            if(text.length>600)return; // bloc trop large : pas une ligne de produit
-            seen.add(card);
-            const parts=text.split('\n').map(s=>s.trim());
             // Nom : première ligne de texte du produit (le texte alternatif de l'image est souvent générique).
-            let name=parts.filter(s=>s.length>8&&!money.test(s)&&!/^sku|quantit|qty|qt[ée]|masse|poids|weight|^x\s?\d/i.test(s))[0]||(img.alt||'').trim();
-            name=name.replace(/^(essai gratuit|free trial|gratuit|nouveau|new|hot|promo)\s*/i,'').replace(/\s*(\.\.\.|…)$/,'');
+            const parts=((nameBlock||card).innerText||'').split('\n').map(s=>s.trim());
+            let name=parts.filter(s=>s.length>8&&!money.test(s)&&!/^sku|quantit|qty|qt[ée]|masse|poids|weight|^x\s?\d|d[ée]baller|ajouter au panier/i.test(s))[0]||(img&&img.alt||'').trim();
+            name=name.replace(/^(essai\s+gratuit|free\s+trial|gratuit|nouveau|new|hot|promo)\s*/i,'').replace(/\s*(\.\.\.|…)$/,'');
             // Variante (« 4mm Argent|18 pouces ») tirée de la ligne Sku, pour distinguer les déclinaisons.
             const sku=text.match(/sku\s*:\s*([A-Z0-9]+)\s*\|?\s*([^\n]*(?:\n(?!quantit|qt|masse|poids)[^\n]*)?)/i);
             if(sku&&sku[2]){const v=sku[2].replace(/\s*\n\s*/g,' ').replace(/\|/g,' | ').trim();if(v)name+=' ('+v+')';}
             const q=text.match(/(?:qt[ée]|quantit[ée]|qty)\s*:?\s*(\d{1,4})/i)||text.match(/[x×]\s?(\d{1,4})\b/i)||text.match(/(\d{1,4})\s*(?:pcs|pi[èe]ces?)/i);
             const link=card.querySelector('a[href]');
             // Image : les pages chargent les photos au défilement (data-src) ; on ignore les images « data: ».
-            const cands=[img.currentSrc,img.src,img.getAttribute('data-src'),img.getAttribute('data-original'),img.getAttribute('data-lazy-src'),
-              (img.getAttribute('srcset')||'').split(' ')[0]].filter(u=>u&&/^https:/.test(u));
-            out.items.push({name:name.slice(0,200),price:pm[0].replace(/[\u00a0\u202f]/g,' '),qty:q?q[1]:'1',image:cands[0]||'',url:link?link.href:'',sku:sku?sku[1]:'',
+            const cands=img?[img.currentSrc,img.src,img.getAttribute('data-src'),img.getAttribute('data-original'),img.getAttribute('data-lazy-src'),
+              (img.getAttribute('srcset')||'').split(' ')[0]].filter(u=>u&&/^https:/.test(u)):[];
+            out.items.push({name:name.slice(0,200),price:pm[0].replace(/[  ]/g,' '),qty:q?q[1]:'1',image:cands[0]||'',url:link?link.href:'',sku:sku?sku[1]:'',
               free:/essai\s+gratuit|free\s+trial/i.test(text)});
+          }
+          // 1. Produits repérés par leur ligne « Sku: » : ne dépend pas du chargement des photos.
+          const skuCount=e=>((e.innerText||'').match(/sku\s*:/gi)||[]).length;
+          const blocks=Array.from(document.querySelectorAll('div,li,tr,td,section,article'))
+            .filter(e=>skuCount(e)===1&&(e.innerText||'').length<=600&&money.test(e.innerText||''));
+          const minimal=blocks.filter(e=>!blocks.some(o=>o!==e&&e.contains(o)));
+          minimal.forEach(b=>{
+            let card=b;
+            for(let i=0;i<4&&!card.querySelector('img')&&card.parentElement&&skuCount(card.parentElement)===1;i++)card=card.parentElement;
+            readCard(card,card.querySelector('img'),b);
+          });
+          // 2. Sinon (page sans Sku), repérage par les photos visibles.
+          if(!minimal.length)Array.from(document.querySelectorAll('img')).filter(vis).forEach(img=>{
+            const r=img.getBoundingClientRect();if(r.width<40||r.width>420)return;
+            let card=img;
+            for(let i=0;i<6&&card.parentElement;i++){card=card.parentElement;if(money.test(card.innerText||''))break;}
+            readCard(card,img,card);
           });
           return JSON.stringify(out);
         })();
@@ -218,8 +234,9 @@ fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit) {
                         progress = "Lecture de la commande…"
                         val r = importCurrent(session, repo)
                             ?: return@runTask "Aucune commande reconnue sur cette page. Ouvre le détail d'une commande, ou lance le diagnostic et transmets-le."
-                        if (r.created) "Commande importée : ${r.items} produit(s). Retrouve-la dans Achats."
-                        else "Commande mise à jour : ${r.items} produit(s), rattachements conservés."
+                        (if (r.created) "Commande importée : ${r.pieces} pièce(s). Retrouve-la dans Achats."
+                        else "Commande mise à jour : ${r.pieces} pièce(s), rattachements conservés.") +
+                            (r.expectedPieces?.takeIf { it != r.pieces }?.let { " Attention : le site en annonce $it. Fais défiler toute la commande puis réimporte-la." } ?: "")
                     }
                 }) { Text("Importer cette commande") }
                 OutlinedButton(enabled = job == null, onClick = {
@@ -236,6 +253,7 @@ fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit) {
                         var created = 0
                         var known = 0
                         var failed = 0
+                        var incomplete = 0
                         links.forEachIndexed { i, link ->
                             progress = "Commande ${i + 1} / ${links.size}"
                             if (!open(session, link)) { failed++; return@forEachIndexed }
@@ -246,10 +264,12 @@ fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit) {
                                 r.created -> created++
                                 else -> known++
                             }
+                            if (r != null && r.expectedPieces != null && r.expectedPieces != r.pieces) incomplete++
                             delay(1_500)
                         }
                         open(session, listUrl)
-                        "$created commande(s) importée(s), $known mise(s) à jour" + if (failed > 0) ", $failed non reconnue(s)." else "."
+                        "$created commande(s) importée(s), $known mise(s) à jour" + (if (failed > 0) ", $failed non reconnue(s)." else ".") +
+                            (if (incomplete > 0) " $incomplete commande(s) lue(s) incomplètement : ouvre-les et réimporte-les une par une." else "")
                     }
                 }) { Text("Importer toutes mes commandes") }
                 OutlinedButton(onClick = {

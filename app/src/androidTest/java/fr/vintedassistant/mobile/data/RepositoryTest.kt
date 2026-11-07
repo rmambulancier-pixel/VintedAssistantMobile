@@ -402,6 +402,14 @@ class RepositoryTest {
         assertEquals(0, order.items.first { it.sku == "NH1111" }.linkedCount)
         purchases.createDraft(order.items.first { it.sku == "NH59670045" }.id)
 
+        // Relecture qui trouve un produit manqué la première fois, inséré au milieu : les rattachements ne bougent pas.
+        val withMissing = first.copy(lines = listOf(first.lines[1], ParsedOrderLine("Pendentif (3)", 74, 1, "", "", sku = "NH57425383"), first.lines[0]))
+        purchases.saveOrder("Nihaojewelry", withMissing, downloadImages = false)
+        order = purchases.orders.first().single()
+        assertEquals(3, order.items.size)
+        assertEquals(0, order.items.first { it.sku == "NH57425383" }.linkedCount)
+        assertEquals(2, order.items.first { it.sku == "NH59670045" }.linkedCount)
+
         // Achat saisi à la main : reçu d'office.
         purchases.saveOrder("Saisie manuelle", ParsedOrder("MANUEL-1", null, listOf(ParsedOrderLine("Bague", 300, 1, "", "")), 0, 0, null, ""), downloadImages = false, received = true)
         assertTrue(purchases.orders.first().first { it.orderRef == "MANUEL-1" }.received)

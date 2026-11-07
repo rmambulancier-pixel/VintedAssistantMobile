@@ -178,6 +178,13 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   - Export des données de l'application (`DataExport`, `DataAudit`) : ZIP `rapport.txt` + `donnees.json`,
     sans photos, pseudos d'acheteurs ni messages, partagé par le menu Android (cache privé, FileProvider).
 
+- **0.10.1 / 0.10.2** : lecture des commandes Nihaojewelry fiabilisée. Dates et libellés avec espaces
+  insécables. Produits offerts reconnus par le drapeau « Essai gratuit » ou par un total égal au port.
+  Produits repérés par leur ligne « Sku: » et non plus par leur photo : une photo pas encore chargée
+  faisait sauter le produit (2 pendentifs perdus sur 24 dans la commande d'août, reproduit sous Chromium).
+  Contrôle du nombre de pièces annoncé par le site. Au réimport, un produit nouvellement lu ne reprend
+  jamais par position le rattachement d'un autre.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

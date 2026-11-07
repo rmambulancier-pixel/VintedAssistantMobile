@@ -169,4 +169,18 @@ class SupplierOrderParserTest {
         assertEquals(listOf(0L, 0L), allFree.lines.map { it.unitPriceCents })
         assertEquals(0L, allFree.feesCents)
     }
+
+    @Test
+    fun expectedPiecesAndSkuVariantsAreKept() {
+        val items = JSONArray()
+        (1..6).forEach { i ->
+            items.put(JSONObject().put("name", "Pendentif humain ($i Order Number |)").put("price", "€ 0.00").put("qty", "1")
+                .put("image", "https://img.nihaojewelry.com/p.jpg").put("sku", "NH5742538$i"))
+        }
+        val order = SupplierOrderParser.parse(
+            JSONObject().put("ref", "NHFR608").put("count", "6").put("shipping", "€ 8.79").put("total", "€ 8.79").put("items", items).toString(),
+        )!!
+        assertEquals(6, order.lines.size)
+        assertEquals(6, order.expectedPieces)
+    }
 }
