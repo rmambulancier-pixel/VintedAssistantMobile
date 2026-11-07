@@ -130,22 +130,26 @@ object SupplierPageScripts {
             out.items.push({name:name.slice(0,200),price:pm[0].replace(/[  ]/g,' '),qty:q?q[1]:'1',image:cands[0]||'',url:link?link.href:'',sku:sku?sku[1]:'',
               free:/essai\s+gratuit|free\s+trial/i.test(text)});
           }
-          // 1. Produits repérés par leur ligne « Sku: » : ne dépend pas du chargement des photos.
-          const skuCount=e=>((e.innerText||'').match(/sku\s*:/gi)||[]).length;
-          const blocks=Array.from(document.querySelectorAll('div,li,tr,td,section,article'))
-            .filter(e=>skuCount(e)===1&&(e.innerText||'').length<=600&&money.test(e.innerText||''));
-          const minimal=blocks.filter(e=>!blocks.some(o=>o!==e&&e.contains(o)));
-          minimal.forEach(b=>{
-            let card=b;
-            for(let i=0;i<4&&!card.querySelector('img')&&card.parentElement&&skuCount(card.parentElement)===1;i++)card=card.parentElement;
-            readCard(card,bestImg(card),b);
-          });
-          // 2. Sinon (page sans Sku), repérage par les photos visibles.
-          if(!minimal.length)Array.from(document.querySelectorAll('img')).filter(vis).forEach(img=>{
+          // 1. Lecture d'origine, éprouvée sur la vraie page : chaque photo produit visible mène à sa ligne.
+          Array.from(document.querySelectorAll('img')).filter(vis).forEach(img=>{
             const r=img.getBoundingClientRect();if(r.width<40||r.width>420)return;
+            if(/icon|cart|panier|badge|logo|flag|sprite|ship/i.test((img.currentSrc||img.src||'')+' '+(img.className||'')+' '+(img.alt||'')))return;
             let card=img;
             for(let i=0;i<6&&card.parentElement;i++){card=card.parentElement;if(money.test(card.innerText||''))break;}
             readCard(card,img,card);
+          });
+          // 2. Rattrapage : produits dont la photo n'était pas chargée, repérés par leur ligne « Sku: ».
+          const known=new Set(out.items.map(i=>i.sku).filter(Boolean));
+          const skuOf=e=>{const m=(e.innerText||'').match(/sku\s*:\s*([A-Z0-9]+)/i);return m?m[1]:'';};
+          const skuCount=e=>((e.innerText||'').match(/sku\s*:/gi)||[]).length;
+          const blocks=Array.from(document.querySelectorAll('div,li,tr,td,section,article'))
+            .filter(e=>skuCount(e)===1&&(e.innerText||'').length<=600&&money.test(e.innerText||''));
+          blocks.filter(e=>!blocks.some(o=>o!==e&&e.contains(o))).forEach(b=>{
+            if(known.has(skuOf(b)))return;
+            let card=b;
+            for(let i=0;i<4&&!card.querySelector('img')&&card.parentElement&&skuCount(card.parentElement)===1;i++)card=card.parentElement;
+            known.add(skuOf(b));
+            readCard(card,bestImg(card),b);
           });
           return JSON.stringify(out);
         })();

@@ -112,7 +112,13 @@ class DataExport(
         java.util.zip.ZipInputStream(zip).use { z ->
             while (true) {
                 val e = z.nextEntry ?: break
-                if (e.name == "donnees.json") { json = z.readBytes().toString(Charsets.UTF_8); break }
+                if (e.name.substringAfterLast('/') == "donnees.json") {
+                    val out = java.io.ByteArrayOutputStream()
+                    val buf = ByteArray(16 * 1024)
+                    while (true) { val n = z.read(buf); if (n < 0) break; out.write(buf, 0, n) }
+                    json = out.toString("UTF-8")
+                    break
+                }
             }
         }
         val root = JSONObject(json ?: throw IllegalArgumentException("Pas un export Vinted Assistant"))

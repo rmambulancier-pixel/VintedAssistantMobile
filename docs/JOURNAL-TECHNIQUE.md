@@ -197,6 +197,10 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   panier, bandeaux et `data:` écartés. « Envoyer la page » : copie de la page fournisseur pour
   diagnostic, sans scripts ni styles, adresse, e-mails et téléphones retirés.
 
+- **0.10.5** : retour à la lecture d'origine des commandes (photo produit visible → ligne), éprouvée sur la
+  vraie page ; la lecture par ligne « Sku: » ne sert plus qu'à rattraper les produits manqués. Icônes et
+  bandeaux écartés. Rétablissement des rattachements : choix de fichier libre et erreur détaillée.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

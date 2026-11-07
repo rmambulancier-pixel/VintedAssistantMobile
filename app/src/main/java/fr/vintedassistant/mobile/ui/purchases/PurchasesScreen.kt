@@ -73,13 +73,26 @@ fun PurchasesScreen(
     }
 
     val pickBackup = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) run("Fichier illisible : choisis un export « vinted-assistant-….zip ».") {
+        if (uri != null) scope.launch {
             val c = context.container()
-            val links = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                context.contentResolver.openInputStream(uri)?.use { c.dataExport.readLinks(it) }
-            } ?: throw IllegalStateException()
-            val n = repo.restoreLinks(links)
-            onMessage("$n rattachement(s) rétabli(s) sur ${links.size} trouvé(s) dans l'export.")
+            val links = try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { c.dataExport.readLinks(it) }
+                } ?: throw java.io.IOException("fichier inaccessible")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onMessage("Lecture du fichier impossible (${e.javaClass.simpleName} : ${e.message ?: "sans détail"}). Choisis un export « vinted-assistant-….zip ».")
+                return@launch
+            }
+            try {
+                val n = repo.restoreLinks(links)
+                onMessage("$n rattachement(s) rétabli(s) sur ${links.size} trouvé(s) dans l'export.")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onMessage("Rétablissement interrompu (${e.javaClass.simpleName} : ${e.message ?: "sans détail"}).")
+            }
         }
     }
 
@@ -139,7 +152,7 @@ fun PurchasesScreen(
             )
         }
         item {
-            OutlinedButton(onClick = { pickBackup.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = { pickBackup.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) {
                 Text("Rétablir les rattachements d'un export")
             }
         }
