@@ -98,6 +98,51 @@ fun PurchasesScreen(
     }
 
 
+    var pendingSteps by remember { mutableStateOf<List<fr.vintedassistant.mobile.data.Corrections.Step>?>(null) }
+    val pickCorrections = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            try {
+                val text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+                } ?: throw java.io.IOException("fichier inaccessible")
+                pendingSteps = context.container().corrections.plan(text)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onMessage("Fichier de corrections illisible (${e.javaClass.simpleName} : ${e.message ?: "sans détail"}).")
+            }
+        }
+    }
+    pendingSteps?.let { steps ->
+        val valid = steps.count { it.ok }
+        AlertDialog(
+            onDismissRequest = { pendingSteps = null },
+            title = { Text("Corrections à appliquer") },
+            text = {
+                Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    steps.forEach { s ->
+                        Text(
+                            (if (s.ok) "✓ " else "✗ ") + s.label + (s.problem?.let { " : $it" } ?: ""),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (s.ok) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                    Text("Les lignes ✗ sont ignorées. La suppression d'une fiche est définitive.", style = MaterialTheme.typography.labelSmall)
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = valid > 0, onClick = {
+                    pendingSteps = null
+                    run("Corrections interrompues.") {
+                        val n = context.container().corrections.apply(steps)
+                        onMessage("$n correction(s) appliquée(s).")
+                    }
+                }) { Text("Appliquer ($valid)") }
+            },
+            dismissButton = { TextButton(onClick = { pendingSteps = null }) { Text("Annuler") } },
+        )
+    }
+
     linkFor?.let { item ->
         LinkDialog(
             item = item,
@@ -165,6 +210,11 @@ fun PurchasesScreen(
         item {
             OutlinedButton(onClick = { pickBackup.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) {
                 Text("Rétablir les rattachements d'un export")
+            }
+        }
+        item {
+            OutlinedButton(onClick = { pickCorrections.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) {
+                Text("Appliquer un fichier de corrections")
             }
         }
         item {

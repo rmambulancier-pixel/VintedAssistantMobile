@@ -511,4 +511,51 @@ class RepositoryTest {
         purchases.saveOrder("Nihaojewelry", order.copy(orderedAt = 999L), downloadImages = false)
         assertEquals(999L, purchases.orders.first().single().orderedAt)
     }
+
+    @Test
+    fun correctionsFileIsCheckedThenApplied() = runBlocking {
+        val purchases = PurchaseRepository(db, photoStore = null, clock = { now })
+        val corrections = Corrections(repo, purchases)
+        purchases.saveOrder("Nihaojewelry", ParsedOrder("AOUT", 1_000L, listOf(
+            ParsedOrderLine("Romain (Or)", 0, 1, "", "", sku = "NH76"),
+            ParsedOrderLine("Romain (Argent)", 0, 1, "", "", sku = "NH75"),
+            ParsedOrderLine("Tennis (18 pouces)", 0, 1, "", "", sku = "NH25"),
+        ), 879, 0, null, ""), downloadImages = false, received = true)
+        purchases.saveOrder("Nihaojewelry", ParsedOrder("OCT", 2_000L, listOf(
+            ParsedOrderLine("Tennis (18 pouces)", 50, 5, "", "", sku = "NH25"),
+        ), 922, 0, null, ""), downloadImages = false, received = true)
+        val items = purchases.orders.first().flatMap { o -> o.items.map { o.orderRef to it } }
+        fun item(ref: String, sku: String) = items.first { it.first == ref && it.second.sku == sku }.second.id
+        val argente = repo.create(fields().copy(title = "Gourmette argentée"))
+        val draft = repo.create(fields().copy(title = "Romain brouillon"))
+        val tennis = repo.create(fields().copy(title = "Tennis vendu en novembre"))
+        val dore = repo.create(fields().copy(title = "Gourmette dorée"))
+        val tennis2 = repo.create(fields().copy(title = "Tennis de septembre"))
+        purchases.link(argente, item("AOUT", "NH76"))
+        purchases.link(draft, item("AOUT", "NH75"))
+        purchases.link(tennis, item("AOUT", "NH25"))
+
+        val json = """{"format":"vinted-assistant-corrections","version":1,
+          "orderDates":[{"ref":"AOUT","date":"2026-08-20"}],
+          "deleteArticles":[{"id":$draft,"title":"Romain brouillon","status":"Brouillon"},{"id":$dore,"title":"Pas ce titre"}],
+          "links":[
+            {"articleId":$argente,"title":"Gourmette argentée","orderRef":"AOUT","sku":"NH75"},
+            {"articleId":$dore,"title":"Gourmette dorée","orderRef":"AOUT","sku":"NH76"},
+            {"articleId":$tennis,"title":"Tennis vendu","orderRef":"OCT","sku":"NH25"},
+            {"articleId":$tennis2,"title":"Tennis de septembre","orderRef":"AOUT","sku":"NH25"}
+          ]}"""
+        val steps = corrections.plan(json)
+        assertEquals(listOf(true, true, false, true, true, true, true), steps.map { it.ok }) // titre différent : écarté
+        assertEquals(6, corrections.apply(steps))
+
+        assertNull(repo.getArticle(draft))
+        assertTrue(repo.getArticle(dore) != null) // non supprimée : titre différent
+        assertEquals(item("AOUT", "NH75"), repo.getArticle(argente)!!.purchaseItemId)
+        assertEquals(item("AOUT", "NH76"), repo.getArticle(dore)!!.purchaseItemId)
+        assertEquals(item("OCT", "NH25"), repo.getArticle(tennis)!!.purchaseItemId)
+        assertEquals(item("AOUT", "NH25"), repo.getArticle(tennis2)!!.purchaseItemId)
+        val aout = purchases.orders.first().first { it.orderRef == "AOUT" }
+        assertEquals(8, java.time.Instant.ofEpochMilli(aout.orderedAt).atZone(java.time.ZoneId.systemDefault()).monthValue)
+        assertTrue(corrections.plan(json).none { it.ok && it.label.contains("→") }) // tout est déjà fait
+    }
 }

@@ -205,6 +205,10 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   illisible. Fiche rattachée : commande et coût affichés, « Changer d'achat ». Choix de l'achat par
   commande (lot) et non plus par bijou, pour distinguer deux commandes du même bijou.
 
+- **0.11** : fichier de corrections (`data/Corrections.kt`) préparé à partir d'un export : dates de commande,
+  fiches à supprimer, rattachements à poser ou déplacer. Chaque étape vérifie le titre (et le statut) de la
+  fiche visée et la place libre, en simulant l'effet des étapes précédentes ; aperçu ✓/✗ et confirmation.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

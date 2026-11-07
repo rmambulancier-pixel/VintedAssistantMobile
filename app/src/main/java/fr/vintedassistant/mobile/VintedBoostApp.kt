@@ -43,5 +43,7 @@ class AppContainer(context: Context) {
         labelStore = labelStore,
     )
 
+    val corrections = fr.vintedassistant.mobile.data.Corrections(articleRepository, purchaseRepository)
+
     val dataExport = fr.vintedassistant.mobile.data.DataExport(context, database, articleRepository, purchaseRepository)
 }
