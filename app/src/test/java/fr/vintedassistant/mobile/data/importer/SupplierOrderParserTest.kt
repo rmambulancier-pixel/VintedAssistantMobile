@@ -193,23 +193,16 @@ class SupplierOrderParserTest {
         assertEquals(LocalDateTime.of(2026, 11, 7, 13, 19).atZone(z).toInstant().toEpochMilli(), SupplierOrderParser.date("7 nov. 2026, 13:19"))
     }
 
-    /** Vraie commande NHFR610132392734 : coupon de 2,43 €, total payé 31,07 €. */
+    /** Vraie commande NHFR610132392734 : prix payés déjà remisés, total 31,07 € = 21,84 + 9,22 (+ 1 centime). */
     @Test
-    fun couponLowersLandedCost() {
-        val items = JSONArray()
-            .put(JSONObject().put("name", "Collier tennis (18 pouces)").put("price", "0.50 €").put("qty", "5").put("image", "").put("sku", "NH53575025"))
-            .put(JSONObject().put("name", "Cordon (Rouge)").put("price", "0.76 €").put("qty", "4").put("image", "").put("sku", "NH59670045"))
-            .put(JSONObject().put("name", "Reste de la commande").put("price", "19.73 €").put("qty", "1").put("image", "").put("sku", "NH0"))
+    fun couponAlreadyInPaidPricesCreatesNoFees() {
         val order = SupplierOrderParser.parse(
-            JSONObject().put("ref", "NHFR610132392734").put("date", "Oct 13, 2026 11:30").put("count", "10")
-                .put("shipping", "9.22 €").put("total", "31.07 €").put("items", items).toString(),
+            JSONObject().put("ref", "NHFR610132392734").put("date", "Oct 13, 2026 11:30")
+                .put("shipping", "9.22 €").put("total", "31.07 €")
+                .put("items", JSONArray().put(JSONObject().put("name", "Lot (x)").put("price", "21.84 €").put("qty", "1").put("image", "")))
+                .toString(),
         )!!
-        assertEquals(2427L, order.itemsTotalCents)
-        assertEquals(-242L, order.feesCents) // 31,07 − 24,27 − 9,22 : la remise
-        val landed = fr.vintedassistant.mobile.domain.LandedCost.allocate(
-            order.lines.map { fr.vintedassistant.mobile.domain.PurchaseLine(it.unitPriceCents, it.quantity) }, order.shippingCents + order.feesCents,
-        )
-        assertEquals(64L, landed[0]) // 0,50 € + part de (9,22 − 2,42) : 0,71 € sans la remise
+        assertEquals(0L, order.feesCents)
     }
 
     @Test

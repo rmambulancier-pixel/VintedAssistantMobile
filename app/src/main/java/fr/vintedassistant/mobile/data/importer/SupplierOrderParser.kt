@@ -69,10 +69,9 @@ object SupplierOrderParser {
         val declaredFees = money(o.optString("fees")) ?: 0L
         // Frais non détaillés : écart entre le total payé et articles + port, s'il est positif et plausible.
         // Écart de quelques centimes = arrondi du site, pas des frais.
-        // Écart positif : frais non détaillés. Écart négatif : coupon ou remise (« Apply Coupon −2,43 € »).
-        // Écart de quelques centimes : arrondi du site.
-        val derivedFees = total?.let { it - itemsTotal - shipping }
-            ?.takeIf { kotlin.math.abs(it) > 5 && it >= -itemsTotal && it <= itemsTotal * 2 } ?: 0L
+        // Écart positif : frais non détaillés. Un coupon est déjà déduit des prix unitaires payés
+        // (0,74 € payé pour 0,82 € d'origine), il ne crée donc pas d'écart. Quelques centimes : arrondi.
+        val derivedFees = total?.let { it - itemsTotal - shipping }?.takeIf { it > 5 && it <= itemsTotal * 2 } ?: 0L
         val fees = if (declaredFees > 0) declaredFees else derivedFees
         val ref = o.optString("ref").trim().take(60).ifEmpty { o.optString("url").substringAfterLast('/').take(60) }
         return ParsedOrder(
