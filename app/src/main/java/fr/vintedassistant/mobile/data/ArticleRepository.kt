@@ -282,7 +282,14 @@ class ArticleRepository(
      */
     suspend fun upsertImported(listing: ImportedListing, sold: Boolean): UpsertResult = db.withTransaction {
         val now = clock()
-        val existing = articleDao.getAll().firstOrNull { VintedLinks.itemId(it.vintedUrl) == listing.itemId }
+        val all = articleDao.getAll()
+        // Sinon, fiche encore sans lien Vinted portant exactement le même titre (remise en vente publiée
+        // sans « Lier cette page ») : la plus récente, pour ne pas créer de doublon.
+        val existing = all.firstOrNull { VintedLinks.itemId(it.vintedUrl) == listing.itemId }
+            ?: all.firstOrNull {
+                it.vintedUrl.isBlank() && ArticleStatus.fromLabel(it.status).inStock &&
+                    fr.vintedassistant.mobile.domain.StockLedger.normalize(it.title) == fr.vintedassistant.mobile.domain.StockLedger.normalize(listing.title)
+            }
         val (cleanDescription, foundKeywords) = ListingTemplates.splitKeywords(listing.description)
         val added = RelativeDates.parse(listing.addedText, now)
         if (existing == null) {

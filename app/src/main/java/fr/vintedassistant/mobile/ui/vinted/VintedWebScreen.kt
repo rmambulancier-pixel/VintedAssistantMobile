@@ -305,7 +305,8 @@ fun VintedWebScreen(
                         }
                     }
                     session.webView = this
-                    val start = article?.vintedUrl?.takeIf { VintedLinks.isVintedUrl(it) } ?: HOME
+                    val start = article?.vintedUrl?.takeIf { VintedLinks.isVintedUrl(it) }
+                        ?: if (article?.status == fr.vintedassistant.mobile.domain.ArticleStatus.DRAFT) SELL else HOME
                     loadUrl(start)
                 }
             },

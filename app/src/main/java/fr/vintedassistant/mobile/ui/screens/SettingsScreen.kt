@@ -61,7 +61,6 @@ fun SettingsScreen(
     onConfirmExport: () -> Unit,
     onDismissExport: () -> Unit,
     onOpenActivity: () -> Unit,
-    onOpenBeta: () -> Unit,
 ) {
     val context = LocalContext.current
     val pickExport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -139,7 +138,7 @@ fun SettingsScreen(
                 "Vinted l'envoie par e-mail, parfois après plusieurs jours.",
             style = MaterialTheme.typography.bodySmall,
         )
-        Button(onClick = onOpenBeta, modifier = Modifier.fillMaxWidth()) { Text("Vinted intégré (bêta)") }
+        Text("Vinted intégré (bêta) : désormais en haut de l'onglet Stock.", style = MaterialTheme.typography.bodySmall)
 
         SectionTitle("Finances")
         Field("Taux de cotisations sociales (%)", rate, { rate = it }, decimal = true)

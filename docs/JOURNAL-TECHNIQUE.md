@@ -130,6 +130,30 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   avec version monochrome.
 - Base v3 (migration automatique 2 → 3). 12 tests sur émulateur, tests JVM de l'import.
 
+## Import Vinted, achats fournisseur, stock pièce par pièce (versions 0.5.0 à 0.8.0)
+
+- **0.5 / 0.6** : import du dressing depuis la bêta (annonces en ligne et vendues, photos,
+  favoris, vues), ventes passées créées sans date connue (comptées « depuis le début », pas dans
+  le mois), mots-clés séparés de la description. Base v4 puis v5.
+- **0.7** : module Achats (`data/PurchaseRepository`, `domain/Purchases.kt`). Lecture des pages
+  de commande Nihaojewelry, coût de revient = prix payé + part du port et des frais au prorata
+  de la valeur, rattachement des fiches, réimport qui met à jour sans perdre les rattachements.
+  Base v6. 0.7.1 : version affichée, arrondis de quelques centimes ignorés.
+- **0.8** : stock pièce par pièce (`domain/StockLedger.kt`, calcul pur testé en JVM).
+  - Un même bijou (nom et variante, sans accents ni casse, plus le fichier de sa photo
+    fournisseur) est regroupé d'une commande à l'autre ; chaque commande forme un lot avec son
+    propre coût de revient. La prochaine fiche prend le lot le plus ancien qui a des pièces libres.
+  - Chaque pièce achetée est classée : pas encore en vente (aucune fiche), brouillon, en ligne
+    ou réservée, vendue, retirée. Les fiches sans achat rattaché sont listées à part.
+  - Remise en vente (`PurchaseRepository.duplicateForSale`) : nouvelle fiche brouillon copiée
+    (texte, prix, photos), rattachée au lot libre, coût de ce lot. L'ancienne fiche et sa vente
+    ne changent pas. Refus si le lot n'a plus de pièce libre.
+  - Import du dressing : une fiche sans lien Vinted, en stock, de titre identique est reconnue
+    comme l'annonce publiée (évite un doublon après une remise en vente).
+  - Écran Stock refait : boutons « Vinted intégré » (déplacé depuis les réglages) et « Achats
+    fournisseur », bilan « Mon stock », vues avec compteurs, rattachement dans les deux sens avec
+    les choix les plus ressemblants en premier. Pas de changement de schéma.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

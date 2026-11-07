@@ -39,7 +39,7 @@ class PurchaseRepository(
                     id = o.id, supplier = o.supplier, orderRef = o.orderRef, orderedAt = o.orderedAt,
                     itemsTotalCents = o.itemsTotalCents, shippingCents = o.shippingCents, feesCents = o.feesCents,
                     items = byOrder[o.id].orEmpty().map {
-                        PurchaseItem(it.id, it.orderId, it.name, it.imageFile, it.unitPriceCents, it.quantity, it.landedUnitCents, linked[it.id] ?: 0)
+                        PurchaseItem(it.id, it.orderId, it.name, it.imageFile, it.unitPriceCents, it.quantity, it.landedUnitCents, linked[it.id] ?: 0, it.imageUrl)
                     },
                 )
             }
@@ -145,6 +145,50 @@ class PurchaseRepository(
                 )
             )
             if (photo != null) photoDao.insert(PhotoEntity(articleId = id, fileName = photo, position = 0, createdAt = now))
+            id
+        }
+    }
+
+    /**
+     * Remise en vente d'un bijou déjà vendu (ou déjà en ligne) : nouvelle fiche brouillon qui reprend
+     * le titre, la description, les détails, le prix et les photos de [templateId].
+     * Avec [itemId], la fiche est rattachée à ce lot d'achat et prend son coût de revient ;
+     * sans lot, elle garde le coût de la fiche d'origine. La fiche d'origine et sa vente ne changent pas.
+     */
+    suspend fun duplicateForSale(templateId: Long, itemId: Long?): Long {
+        val template = articleDao.getById(templateId) ?: throw IllegalStateException("Fiche introuvable")
+        val item = itemId?.let { dao.getItem(it) ?: throw IllegalStateException("Achat introuvable") }
+        if (item != null) {
+            val used = articleDao.linkedToPurchase(item.id).size
+            check(used < item.quantity) { "Plus de pièce libre dans ce lot" }
+        }
+        val now = clock()
+        val copies = photoDao.forArticle(templateId).mapNotNull { photo ->
+            val store = photoStore ?: return@mapNotNull null
+            try {
+                val bytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.file(photo.fileName).readBytes() }
+                store.importBytes(bytes)
+            } catch (e: Exception) {
+                null
+            }
+        }
+        return db.withTransaction {
+            val id = articleDao.insert(
+                template.copy(
+                    id = 0,
+                    status = ArticleStatus.DRAFT.label,
+                    costCents = item?.landedUnitCents ?: template.costCents,
+                    purchaseItemId = item?.id,
+                    createdAt = now,
+                    updatedAt = now,
+                    firstPublishedAt = null,
+                    lastPublishedAt = null,
+                    vintedUrl = "",
+                    favoritesCount = null,
+                    viewsCount = null,
+                )
+            )
+            copies.forEachIndexed { i, name -> photoDao.insert(PhotoEntity(articleId = id, fileName = name, position = i, createdAt = now)) }
             id
         }
     }

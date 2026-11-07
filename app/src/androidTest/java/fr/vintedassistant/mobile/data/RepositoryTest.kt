@@ -9,6 +9,7 @@ import fr.vintedassistant.mobile.data.local.PhotoEntity
 import fr.vintedassistant.mobile.data.local.VintedBoostDatabase
 import fr.vintedassistant.mobile.domain.ArticleFields
 import fr.vintedassistant.mobile.domain.ArticleStatus
+import fr.vintedassistant.mobile.domain.StockLedger
 import fr.vintedassistant.mobile.domain.SaleValidation
 import fr.vintedassistant.mobile.domain.ShippingStatus
 import fr.vintedassistant.mobile.domain.VintedEventKind
@@ -319,5 +320,49 @@ class RepositoryTest {
         val order = purchases.orders.first().single()
         assertEquals(1, order.items.first { it.name == "Bracelet trèfle" }.linkedCount)
         assertEquals(440L, repo.getArticle(articleId)!!.costCents) // 8,79 € / 2 pièces, arrondi
+    }
+
+    @Test
+    fun relaunchCopiesSoldListingOntoOldestFreeLot() = runBlocking {
+        val purchases = PurchaseRepository(db, photoStore = null, clock = { now })
+        purchases.saveOrder("Nihaojewelry", ParsedOrder("A", 1_000L, listOf(ParsedOrderLine("Cordon rouge", 100, 1, "", "")), 0, 0, null, ""), downloadImages = false)
+        purchases.saveOrder("Nihaojewelry", ParsedOrder("B", 2_000L, listOf(ParsedOrderLine("Cordon rouge", 150, 2, "", "")), 0, 0, null, ""), downloadImages = false)
+        val orders = purchases.orders.first()
+        val lotA = orders.first { it.orderRef == "A" }.items.single()
+        val lotB = orders.first { it.orderRef == "B" }.items.single()
+
+        val sold = repo.upsertImported(ImportedListing(5, "https://www.vinted.fr/items/5-cordon", "Bracelet cordon rouge", 800, description = "Joli cordon"), sold = true).articleId
+        purchases.link(sold, lotA.id)
+
+        val stock = StockLedger.build(purchases.orders.first(), repo.getAllArticles())
+        val product = stock.products.single()
+        assertEquals(2, product.notListed)
+        assertEquals(lotB.id, product.nextLot?.itemId)
+
+        val copyId = purchases.duplicateForSale(sold, product.nextLot!!.itemId)
+        val copy = repo.getArticle(copyId)!!
+        assertEquals(ArticleStatus.DRAFT, copy.status)
+        assertEquals("Bracelet cordon rouge", copy.title)
+        assertEquals("Joli cordon", copy.description)
+        assertEquals(800L, copy.priceCents)
+        assertEquals(150L, copy.costCents)
+        assertEquals("", copy.vintedUrl)
+        assertEquals(lotB.id, copy.purchaseItemId)
+        assertEquals(ArticleStatus.SOLD, repo.getArticle(sold)!!.status) // l'ancienne ne bouge pas
+        assertEquals(1, repo.sales.first().size)
+
+        // La copie publiée puis relue dans le dressing n'est pas dupliquée (même titre, sans lien).
+        val merged = repo.upsertImported(ImportedListing(6, "https://www.vinted.fr/items/6-cordon", "Bracelet cordon rouge", 800), sold = false)
+        assertEquals(copyId, merged.articleId)
+        assertTrue(!merged.created)
+
+        purchases.duplicateForSale(sold, lotB.id)
+        try {
+            purchases.duplicateForSale(sold, lotB.id)
+            throw AssertionError("Le lot B n'a plus de pièce libre")
+        } catch (e: IllegalStateException) {
+            // attendu
+        }
+        assertEquals(0, StockLedger.build(purchases.orders.first(), repo.getAllArticles()).products.single().notListed)
     }
 }

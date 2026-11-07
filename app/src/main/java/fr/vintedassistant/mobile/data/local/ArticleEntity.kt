@@ -196,6 +196,7 @@ fun ArticleEntity.toDomain(photos: List<String> = emptyList()) = Article(
     vintedUrl = vintedUrl,
     favoritesCount = favoritesCount,
     viewsCount = viewsCount,
+    purchaseItemId = purchaseItemId,
 )
 
 fun SaleEntity.toDomain() = Sale(

@@ -16,6 +16,8 @@ data class PurchaseItem(
     val quantity: Int,
     val landedUnitCents: Long,
     val linkedCount: Int,
+    /** Adresse de la photo chez le fournisseur : sert à reconnaître le même bijou d'une commande à l'autre. */
+    val imageUrl: String = "",
 ) {
     val remaining: Int get() = (quantity - linkedCount).coerceAtLeast(0)
 }

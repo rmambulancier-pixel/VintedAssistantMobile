@@ -54,6 +54,7 @@ import fr.vintedassistant.mobile.ui.screens.DashboardScreen
 import fr.vintedassistant.mobile.ui.screens.RepublishScreen
 import fr.vintedassistant.mobile.ui.screens.SalesScreen
 import fr.vintedassistant.mobile.ui.screens.SettingsScreen
+import fr.vintedassistant.mobile.ui.screens.StockActions
 import fr.vintedassistant.mobile.ui.screens.StockScreen
 import fr.vintedassistant.mobile.ui.vinted.VintedWebScreen
 import fr.vintedassistant.mobile.ui.purchases.PurchasesScreen
@@ -98,6 +99,9 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
     val aiStatus by vm.aiStatus.collectAsStateWithLifecycle()
     val notices by vm.notices.collectAsStateWithLifecycle()
     val exportReport by vm.exportReport.collectAsStateWithLifecycle()
+    val stock by vm.stock.collectAsStateWithLifecycle()
+    // Fiche créée par « Remettre en vente » : que faire ensuite ?
+    var created by rememberSaveable { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(tabRequest) {
         if (tabRequest > 0) {
@@ -132,6 +136,27 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                 }
             },
             confirmButton = { TextButton(onClick = onSharedLinkHandled) { Text("Annuler") } },
+        )
+    }
+
+    created?.let { id ->
+        AlertDialog(
+            onDismissRequest = { created = null },
+            title = { Text("Fiche prête en brouillon") },
+            text = {
+                Text(
+                    "La nouvelle fiche reprend le texte, le prix et les photos, avec le coût d'achat de ta commande. " +
+                        "Rien n'est publié tant que tu ne publies pas toi-même dans Vinted.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    created = null
+                    vintedArticle = id
+                    overlayIndex = Overlay.VINTED.ordinal
+                }) { Text("Publier dans Vinted intégré") }
+            },
+            dismissButton = { TextButton(onClick = { created = null; openEditor(id) }) { Text("Voir la fiche") } },
         )
     }
 
@@ -215,7 +240,6 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                 onConfirmExport = { vm.confirmExportImport(); close() },
                 onDismissExport = vm::dismissExport,
                 onOpenActivity = { overlayIndex = Overlay.ACTIVITY.ordinal },
-                onOpenBeta = { vintedArticle = null; overlayIndex = Overlay.VINTED.ordinal },
             )
             Overlay.ACTIVITY -> ActivityScreen(
                 notices = notices,
@@ -259,7 +283,21 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                     modifier = modifier,
                     onOpenArticle = ::openEditor,
                 )
-                Tab.STOCK -> StockScreen(articles, modifier, onOpen = ::openEditor, onOpenPurchases = { overlayIndex = Overlay.PURCHASES.ordinal })
+                Tab.STOCK -> StockScreen(
+                    articles = articles,
+                    stock = stock,
+                    message = message,
+                    onDismissMessage = vm::dismissMessage,
+                    modifier = modifier,
+                    actions = StockActions(
+                        openArticle = ::openEditor,
+                        openPurchases = { overlayIndex = Overlay.PURCHASES.ordinal },
+                        openVinted = { vintedArticle = null; overlayIndex = Overlay.VINTED.ordinal },
+                        relaunch = { templateId, itemId -> vm.relaunch(templateId, itemId) { created = it } },
+                        draftFromPurchase = { itemId -> vm.draftFromPurchase(itemId, ::openEditor) },
+                        link = { a, lot -> vm.linkToPurchase(a.id, lot.itemId, a.title, lot.landedUnitCents) },
+                    ),
+                )
                 Tab.REPUBLISH -> RepublishScreen(
                     plan = plan,
                     stagnant = dashboard?.stagnant.orEmpty(),

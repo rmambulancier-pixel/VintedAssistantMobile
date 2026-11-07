@@ -5,96 +5,475 @@ package fr.vintedassistant.mobile.ui.screens
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import fr.vintedassistant.mobile.domain.Article
 import fr.vintedassistant.mobile.domain.ArticleStatus
 import fr.vintedassistant.mobile.domain.Money
+import fr.vintedassistant.mobile.domain.StockLedger
+import fr.vintedassistant.mobile.domain.StockLot
+import fr.vintedassistant.mobile.domain.StockOverview
+import fr.vintedassistant.mobile.domain.StockProduct
+import fr.vintedassistant.mobile.ui.MessageCard
 import fr.vintedassistant.mobile.ui.PhotoThumb
+import java.text.DateFormat
+import java.util.Date
+import java.util.Locale
 
-private enum class StockFilter(val label: String, val accepts: (Article) -> Boolean) {
-    IN_STOCK("En stock", { it.status.inStock }),
-    DRAFT("Brouillons", { it.status == ArticleStatus.DRAFT }),
-    ONLINE("En ligne", { it.status == ArticleStatus.ONLINE }),
-    RESERVED("Réservés", { it.status == ArticleStatus.RESERVED }),
-    SOLD("Vendus", { it.status == ArticleStatus.SOLD }),
-    ALL("Tous", { true }),
+/** Vues du stock. « Pas encore en vente » compte des pièces achetées ; les autres, des fiches. */
+private enum class StockView(val label: String) {
+    NOT_LISTED("Pas encore en vente"),
+    ONLINE("En ligne"),
+    DRAFT("Brouillons"),
+    RESERVED("Réservés"),
+    SOLD("Vendus"),
+    NO_PURCHASE("Sans achat"),
+    ALL("Tous"),
 }
 
+private fun StockView.accepts(a: Article, stock: StockOverview?): Boolean = when (this) {
+    StockView.NOT_LISTED -> false
+    StockView.ONLINE -> a.status == ArticleStatus.ONLINE
+    StockView.DRAFT -> a.status == ArticleStatus.DRAFT
+    StockView.RESERVED -> a.status == ArticleStatus.RESERVED
+    StockView.SOLD -> a.status == ArticleStatus.SOLD
+    StockView.NO_PURCHASE -> stock?.unlinked?.any { it.id == a.id } ?: (a.purchaseItemId == null)
+    StockView.ALL -> true
+}
+
+/** Actions de l'écran Stock, regroupées pour garder un appel lisible. */
+class StockActions(
+    val openArticle: (Long) -> Unit,
+    val openPurchases: () -> Unit,
+    val openVinted: () -> Unit,
+    /** Copie de la fiche [templateId], rattachée au lot [itemId] s'il est donné. */
+    val relaunch: (templateId: Long, itemId: Long?) -> Unit,
+    val draftFromPurchase: (itemId: Long) -> Unit,
+    val link: (article: Article, lot: StockLot) -> Unit,
+)
+
 @Composable
-fun StockScreen(articles: List<Article>?, modifier: Modifier, onOpen: (Long) -> Unit, onOpenPurchases: () -> Unit = {}) {
-    var filter by rememberSaveable { mutableStateOf(StockFilter.IN_STOCK) }
+fun StockScreen(
+    articles: List<Article>?,
+    stock: StockOverview?,
+    message: String?,
+    onDismissMessage: () -> Unit,
+    modifier: Modifier,
+    actions: StockActions,
+) {
+    var view by rememberSaveable { mutableStateOf(StockView.ONLINE) }
     var query by rememberSaveable { mutableStateOf("") }
+    var linkProduct by remember { mutableStateOf<StockProduct?>(null) }
+    var linkArticle by remember { mutableStateOf<Article?>(null) }
+    var blindRelaunch by remember { mutableStateOf<Article?>(null) }
+    val dateFormat = remember { DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.FRANCE) }
+
+    linkProduct?.let { product ->
+        ArticlePickerDialog(
+            product = product,
+            candidates = stock?.unlinked.orEmpty(),
+            onDismiss = { linkProduct = null },
+            onPick = { a -> linkProduct = null; product.nextLot?.let { actions.link(a, it) } },
+        )
+    }
+    linkArticle?.let { article ->
+        ProductPickerDialog(
+            article = article,
+            products = stock?.products.orEmpty().filter { it.notListed > 0 },
+            onDismiss = { linkArticle = null },
+            onPick = { p -> linkArticle = null; p.nextLot?.let { actions.link(article, it) } },
+        )
+    }
+    blindRelaunch?.let { a ->
+        AlertDialog(
+            onDismissRequest = { blindRelaunch = null },
+            title = { Text("Aucun achat rattaché") },
+            text = {
+                Text(
+                    "Cette fiche n'est rattachée à aucun achat : impossible de vérifier qu'il te reste ce bijou. " +
+                        "Le mieux est de la rattacher d'abord à son achat (bouton « Rattacher un achat »). " +
+                        "Tu peux aussi créer la copie quand même : elle gardera le coût d'achat de l'ancienne fiche.",
+                )
+            },
+            confirmButton = { TextButton(onClick = { blindRelaunch = null; actions.relaunch(a.id, null) }) { Text("Copier quand même") } },
+            dismissButton = { TextButton(onClick = { blindRelaunch = null }) { Text("Annuler") } },
+        )
+    }
 
     LazyColumn(modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        message?.let { msg -> item { Column(Modifier.padding(top = 8.dp)) { MessageCard(msg, onDismissMessage) } } }
         item {
-            androidx.compose.material3.OutlinedButton(onClick = onOpenPurchases, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                Text("Achats fournisseur et coûts d'achat")
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = actions.openVinted, modifier = Modifier.weight(1f)) { Text("Vinted intégré") }
+                OutlinedButton(onClick = actions.openPurchases, modifier = Modifier.weight(1f)) { Text("Achats fournisseur") }
             }
         }
+        if (articles == null || stock == null) {
+            item { CircularProgressIndicator() }
+            return@LazyColumn
+        }
+        item { StockSummary(stock, articles) }
         item {
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
                 label = { Text("Rechercher (nom, marque, catégorie)") }, singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(StockFilter.entries) { f ->
-                    FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(f.label) })
+                items(StockView.entries) { v ->
+                    val count = if (v == StockView.NOT_LISTED) stock.notListed else articles.count { v.accepts(it, stock) }
+                    FilterChip(selected = view == v, onClick = { view = v }, label = { Text("${v.label} ($count)") })
                 }
             }
         }
-        if (articles == null) {
-            item { CircularProgressIndicator() }
-            return@LazyColumn
-        }
-        val q = query.trim().lowercase()
-        val shown = articles.filter(filter.accepts).filter {
-            q.isEmpty() || listOf(it.title, it.brand, it.category, it.size).any { s -> s.lowercase().contains(q) }
-        }
-        item {
-            Text(
-                "${shown.size} article(s) • coût ${Money.formatEuros(shown.sumOf { it.costCents })} • " +
-                    "prix affichés ${Money.formatEuros(shown.sumOf { it.priceCents })}",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        if (shown.isEmpty()) {
+        val q = StockLedger.normalize(query)
+        fun matches(vararg texts: String) = q.isEmpty() || texts.any { StockLedger.normalize(it).contains(q) }
+
+        if (view == StockView.NOT_LISTED) {
+            val shown = stock.products.filter { it.notListed > 0 && matches(it.name, it.template?.title.orEmpty()) }
             item {
                 Text(
-                    if (articles.isEmpty()) "Aucun article. Appuie sur + pour créer ta première fiche." else "Aucun article pour ce filtre.",
-                    modifier = Modifier.padding(vertical = 16.dp),
+                    "Pièces achetées qui n'ont encore aucune fiche. Valeur d'achat : ${Money.formatEuros(stock.notListedValueCents)}.",
+                    style = MaterialTheme.typography.bodySmall,
                 )
             }
+            if (shown.isEmpty()) {
+                item {
+                    Text(
+                        if (stock.products.isEmpty()) "Aucun achat enregistré. Importe tes commandes depuis « Achats fournisseur »."
+                        else "Tout ce que tu as acheté a déjà une fiche.",
+                        Modifier.padding(vertical = 16.dp),
+                    )
+                }
+            }
+            items(shown, key = { it.key }) { product ->
+                ProductCard(
+                    product = product,
+                    dateFormat = dateFormat,
+                    onRelaunch = { t -> actions.relaunch(t.id, product.nextLot?.itemId) },
+                    onDraft = { product.nextLot?.let { actions.draftFromPurchase(it.itemId) } },
+                    onLink = { linkProduct = product },
+                    onOpen = actions.openArticle,
+                )
+            }
+        } else {
+            val shown = articles.filter { view.accepts(it, stock) && matches(it.title, it.brand, it.category, it.size) }
+            item {
+                Text(
+                    "${shown.size} fiche(s) • coût ${Money.formatEuros(shown.sumOf { it.costCents })} • " +
+                        "prix affichés ${Money.formatEuros(shown.sumOf { it.priceCents })}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (view == StockView.NO_PURCHASE && shown.isNotEmpty()) {
+                item {
+                    Text(
+                        "Ces fiches ne sont rattachées à aucun achat : leur coût est saisi à la main ou inconnu. " +
+                            "Rattache-les pour que le stock et les marges soient exacts.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            if (shown.isEmpty()) {
+                item {
+                    Text(
+                        if (articles.isEmpty()) "Aucune fiche. Appuie sur + pour créer la première." else "Aucune fiche dans cette vue.",
+                        Modifier.padding(vertical = 16.dp),
+                    )
+                }
+            }
+            items(shown, key = { it.id }) { article ->
+                val product = stock.productOf(article)
+                ArticleRow(article, onClick = { actions.openArticle(article.id) }, footer = {
+                    StockFooter(
+                        article = article,
+                        product = product,
+                        onRelaunch = {
+                            val lot = product?.nextLot
+                            if (product == null) blindRelaunch = article else if (lot != null) actions.relaunch(article.id, lot.itemId)
+                        },
+                        onLink = { linkArticle = article },
+                    )
+                })
+            }
         }
-        items(shown, key = { it.id }) { article -> ArticleRow(article) { onOpen(article.id) } }
         item { Text(" ", Modifier.padding(bottom = 72.dp)) }
     }
 }
 
+/** Bilan pièce par pièce : d'où vient chaque bijou et où il en est. */
 @Composable
-fun ArticleRow(article: Article, trailing: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
+private fun StockSummary(stock: StockOverview, articles: List<Article>) {
+    ElevatedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Mon stock", style = MaterialTheme.typography.titleSmall)
+            if (stock.bought == 0) {
+                Text(
+                    "Aucun achat enregistré : importe tes commandes fournisseur pour suivre aussi les bijoux pas encore mis en vente.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                Text("${stock.bought} pièce(s) achetée(s) :", style = MaterialTheme.typography.bodyMedium)
+                SummaryLine("Pas encore en vente", stock.notListed, highlight = true)
+                SummaryLine("En brouillon", stock.drafts)
+                SummaryLine("En ligne ou réservées", stock.forSale)
+                SummaryLine("Vendues", stock.sold)
+                if (stock.withdrawn > 0) SummaryLine("Retirées de Vinted", stock.withdrawn)
+            }
+            val outside = stock.unlinked
+            if (outside.isNotEmpty()) {
+                val inStock = outside.count { it.status.inStock }
+                val sold = outside.count { it.status == ArticleStatus.SOLD }
+                Text(
+                    "En plus : ${outside.size} fiche(s) sans achat rattaché ($inStock en stock, $sold vendue(s)). Vue « Sans achat ».",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            if (articles.isNotEmpty() && stock.bought == 0) {
+                Text("${articles.size} fiche(s) au total.", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummaryLine(label: String, value: Int, highlight: Boolean = false) {
+    Row(Modifier.fillMaxWidth()) {
+        Text("• $label", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        Text(
+            value.toString(),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (highlight) FontWeight.Bold else FontWeight.Normal,
+            color = if (highlight && value > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+/** Bijou acheté qui a des pièces sans fiche : lots, prix d'achat et actions. */
+@Composable
+private fun ProductCard(
+    product: StockProduct,
+    dateFormat: DateFormat,
+    onRelaunch: (Article) -> Unit,
+    onDraft: () -> Unit,
+    onLink: () -> Unit,
+    onOpen: (Long) -> Unit,
+) {
+    val template = product.template
+    ElevatedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PhotoThumb(template?.photos?.firstOrNull() ?: product.imageFile)
+                Column(Modifier.weight(1f)) {
+                    Text(template?.title ?: product.name, style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                    if (template != null) Text("Fournisseur : ${product.name}", style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                    Text(
+                        "${product.notListed} pièce(s) pas encore en vente",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    val parts = buildList {
+                        add("achetées ${product.bought}")
+                        if (product.drafts > 0) add("brouillon ${product.drafts}")
+                        if (product.forSale > 0) add("en ligne ${product.forSale}")
+                        if (product.sold > 0) add("vendues ${product.sold}")
+                    }
+                    Text(parts.joinToString(" • ").replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.labelSmall)
+                }
+            }
+            product.lots.forEach { lot ->
+                Text(
+                    "Commande du ${dateFormat.format(Date(lot.orderedAt))} : ${lot.remaining} libre(s) sur ${lot.quantity}, " +
+                        "revient ${Money.formatEuros(lot.landedUnitCents)} pièce",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (lot.remaining > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+                )
+            }
+            val next = product.nextLot
+            if (product.costVaries && next != null) {
+                Text(
+                    "Prix d'achat différent selon la commande : la prochaine fiche prendra ${Money.formatEuros(next.landedUnitCents)} " +
+                        "(commande la plus ancienne d'abord).",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (product.overLinked) {
+                Text(
+                    "Attention : ${product.articles.size} fiches pour ${product.bought} pièce(s) achetée(s). Vérifie les rattachements dans Achats.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            if (template != null) {
+                Text(
+                    "Remettre en vente crée un brouillon avec le texte, le prix (${Money.formatEuros(template.priceCents)}) et les photos de « ${template.title.take(50)} ».",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Button(onClick = { onRelaunch(template) }) { Text("Remettre en vente") }
+                    TextButton(onClick = { onOpen(template.id) }) { Text("Voir l'ancienne") }
+                }
+                Row {
+                    TextButton(onClick = onDraft) { Text("Fiche vierge") }
+                    TextButton(onClick = onLink) { Text("Rattacher une fiche") }
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Button(onClick = onDraft) { Text("Créer la fiche") }
+                    TextButton(onClick = onLink) { Text("Rattacher une fiche") }
+                }
+            }
+        }
+    }
+}
+
+/** Sous une fiche : d'où elle vient et, pour un bijou vendu encore en stock, la remise en vente. */
+@Composable
+private fun ColumnScope.StockFooter(article: Article, product: StockProduct?, onRelaunch: () -> Unit, onLink: () -> Unit) {
+    if (product == null) {
+        Text("Aucun achat rattaché", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+        Row {
+            TextButton(onClick = onLink) { Text("Rattacher un achat") }
+            if (article.status == ArticleStatus.SOLD) TextButton(onClick = onRelaunch) { Text("Remettre en vente") }
+        }
+        return
+    }
+    if (article.status != ArticleStatus.SOLD) return
+    if (product.notListed > 0) {
+        Text(
+            "Encore ${product.notListed} en stock, pas encore en vente",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold,
+        )
+        Button(onClick = onRelaunch) { Text("Remettre en vente") }
+    } else {
+        val other = product.forSale + product.drafts
+        Text(
+            if (other > 0) "Plus de pièce libre : les autres ont déjà une fiche ($other)." else "Plus aucune pièce en stock pour ce bijou.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.outline,
+        )
+    }
+}
+
+/** Choix de la fiche existante à rattacher à un bijou acheté (fiches sans achat, les plus ressemblantes d'abord). */
+@Composable
+private fun ArticlePickerDialog(product: StockProduct, candidates: List<Article>, onDismiss: () -> Unit, onPick: (Article) -> Unit) {
+    val sorted = remember(product, candidates) {
+        candidates.sortedByDescending { StockLedger.similarity(it.title, product.name) }
+    }
+    PickerDialog(
+        title = "Quelle fiche vient de cet achat ?",
+        header = "${product.name}\nRevient ${product.nextLot?.let { Money.formatEuros(it.landedUnitCents) } ?: "?"} pièce",
+        headerImage = product.imageFile,
+        empty = "Aucune fiche sans achat. Toutes tes fiches sont déjà rattachées.",
+        entries = sorted.map { a -> Triple(a.photos.firstOrNull(), a.title, "${a.status.label} • coût ${if (a.costCents == 0L) "non saisi" else Money.formatEuros(a.costCents)}") },
+        onDismiss = onDismiss,
+        onPick = { i -> onPick(sorted[i]) },
+    )
+}
+
+/** Choix de l'achat d'où vient une fiche (bijoux qui ont des pièces libres, les plus ressemblants d'abord). */
+@Composable
+private fun ProductPickerDialog(article: Article, products: List<StockProduct>, onDismiss: () -> Unit, onPick: (StockProduct) -> Unit) {
+    val sorted = remember(article, products) {
+        products.sortedByDescending { StockLedger.similarity(article.title, it.name) }
+    }
+    PickerDialog(
+        title = "De quel achat vient cette fiche ?",
+        header = article.title,
+        headerImage = article.photos.firstOrNull(),
+        empty = "Aucun bijou acheté n'a de pièce libre. Importe la commande correspondante dans « Achats fournisseur ».",
+        entries = sorted.map { p ->
+            Triple(p.imageFile, p.name, "${p.notListed} pièce(s) libre(s) • revient ${p.nextLot?.let { Money.formatEuros(it.landedUnitCents) } ?: "?"}")
+        },
+        onDismiss = onDismiss,
+        onPick = { i -> onPick(sorted[i]) },
+    )
+}
+
+@Composable
+private fun PickerDialog(
+    title: String,
+    header: String,
+    headerImage: String?,
+    empty: String,
+    entries: List<Triple<String?, String, String>>,
+    onDismiss: () -> Unit,
+    onPick: (Int) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PhotoThumb(headerImage, size = 48.dp)
+                    Text(header, style = MaterialTheme.typography.bodySmall, maxLines = 4)
+                }
+                if (entries.isEmpty()) Text(empty, style = MaterialTheme.typography.bodySmall)
+                Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+                    entries.forEachIndexed { i, (image, name, detail) ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { onPick(i) }.padding(vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            PhotoThumb(image, size = 48.dp)
+                            Column(Modifier.weight(1f)) {
+                                Text(name, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                                Text(detail, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
+    )
+}
+
+@Composable
+fun ArticleRow(
+    article: Article,
+    trailing: (@Composable () -> Unit)? = null,
+    footer: (@Composable ColumnScope.() -> Unit)? = null,
+    onClick: () -> Unit,
+) {
     ElevatedCard(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             PhotoThumb(article.photos.firstOrNull())
@@ -115,6 +494,7 @@ fun ArticleRow(article: Article, trailing: (@Composable () -> Unit)? = null, onC
                     article.status.label + if (stats.isNotEmpty()) " • $stats" else "",
                     style = MaterialTheme.typography.labelSmall,
                 )
+                footer?.invoke(this)
             }
             trailing?.invoke()
         }

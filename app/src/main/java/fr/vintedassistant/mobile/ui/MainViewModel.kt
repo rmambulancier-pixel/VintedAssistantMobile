@@ -13,6 +13,9 @@ import fr.vintedassistant.mobile.ai.ListingAssistant
 import fr.vintedassistant.mobile.data.AppSettings
 import fr.vintedassistant.mobile.data.ArticleRepository
 import fr.vintedassistant.mobile.data.SettingsStore
+import fr.vintedassistant.mobile.data.PurchaseRepository
+import fr.vintedassistant.mobile.domain.StockLedger
+import fr.vintedassistant.mobile.domain.StockOverview
 import fr.vintedassistant.mobile.data.legacy.LegacyInventoryImporter.Outcome
 import fr.vintedassistant.mobile.domain.Article
 import fr.vintedassistant.mobile.domain.DashboardStats
@@ -43,6 +46,7 @@ class MainViewModel(
     private val repository: ArticleRepository,
     private val settingsStore: SettingsStore,
     private val assistant: ListingAssistant,
+    private val purchases: PurchaseRepository,
 ) : ViewModel() {
 
     private val clock = MutableStateFlow(System.currentTimeMillis())
@@ -70,6 +74,11 @@ class MainViewModel(
         combine(repository.articles, repository.sales, settingsStore.settings, clock) { a, s, st, now ->
             computeDashboard(a, s, st.dashboard, now)
         }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Stock pièce par pièce : achats fournisseur croisés avec les fiches. */
+    val stock: StateFlow<StockOverview?> =
+        combine(purchases.orders, repository.articles) { o, a -> StockLedger.build(o, a) }
+            .flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val republishPlan: StateFlow<RepublishPlan?> =
         combine(repository.articles, repository.republishedTimestamps, settingsStore.settings, clock) { a, t, st, now ->
@@ -190,6 +199,28 @@ class MainViewModel(
         _message.value = if (ok) "Modèle IA téléchargé." else "Téléchargement non terminé. Réessaie en Wi-Fi."
     }
 
+    /**
+     * Nouvelle fiche brouillon copiée de [templateId], rattachée au lot [itemId] s'il est donné.
+     * [onCreated] reçoit l'identifiant de la nouvelle fiche.
+     */
+    fun relaunch(templateId: Long, itemId: Long?, onCreated: (Long) -> Unit) =
+        launchSafely("Remise en vente impossible : plus de pièce libre pour ce bijou, ou fiche introuvable.") {
+            onCreated(purchases.duplicateForSale(templateId, itemId))
+        }
+
+    /** Fiche brouillon vierge depuis un produit acheté (photo et nom du fournisseur). */
+    fun draftFromPurchase(itemId: Long, onCreated: (Long) -> Unit) =
+        launchSafely("Création de la fiche impossible.") { onCreated(purchases.createDraft(itemId)) }
+
+    /** Rattache une fiche à un lot d'achat : son coût d'achat devient le coût de revient du lot. */
+    fun linkToPurchase(articleId: Long, itemId: Long, title: String, costCents: Long) =
+        launchSafely("Rattachement impossible.") {
+            purchases.link(articleId, itemId)
+            _message.value = "« ${title.take(60)} » rattaché : coût d'achat ${fr.vintedassistant.mobile.domain.Money.formatEuros(costCents)}."
+        }
+
+    fun unlinkPurchase(articleId: Long) = launchSafely("Détachement impossible.") { purchases.unlink(articleId) }
+
     private fun launchSafely(errorMessage: String, block: suspend () -> Unit) {
         viewModelScope.launch {
             try {
@@ -219,7 +250,7 @@ class MainViewModel(
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as VintedBoostApp
                 val c = app.container
-                MainViewModel(app.applicationContext, c.articleRepository, c.settingsStore, c.assistant)
+                MainViewModel(app.applicationContext, c.articleRepository, c.settingsStore, c.assistant, c.purchaseRepository)
             }
         }
     }

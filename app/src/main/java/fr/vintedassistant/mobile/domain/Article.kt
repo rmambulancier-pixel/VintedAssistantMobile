@@ -44,6 +44,8 @@ data class Article(
     /** Relevés sur Vinted lors du dernier import (null si inconnus). */
     val favoritesCount: Int? = null,
     val viewsCount: Int? = null,
+    /** Produit acheté (module Achats) dont vient cet article, s'il est rattaché. */
+    val purchaseItemId: Long? = null,
 ) {
     /** Marge brute : prix affiché moins coût d'achat (frais et cotisations non déduits). */
     val marginCents: Long get() = priceCents - costCents
