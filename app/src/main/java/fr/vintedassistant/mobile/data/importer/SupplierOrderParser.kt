@@ -56,7 +56,8 @@ object SupplierOrderParser {
         val total = money(o.optString("total"))
         val declaredFees = money(o.optString("fees")) ?: 0L
         // Frais non détaillés : écart entre le total payé et articles + port, s'il est positif et plausible.
-        val derivedFees = total?.let { it - itemsTotal - shipping }?.takeIf { it in 1..(itemsTotal * 2) } ?: 0L
+        // Écart de quelques centimes = arrondi du site, pas des frais.
+        val derivedFees = total?.let { it - itemsTotal - shipping }?.takeIf { it > 5 && it <= itemsTotal * 2 } ?: 0L
         val fees = if (declaredFees > 0) declaredFees else derivedFees
         val ref = o.optString("ref").trim().take(60).ifEmpty { o.optString("url").substringAfterLast('/').take(60) }
         return ParsedOrder(

@@ -226,11 +226,18 @@ fun SettingsScreen(
 
         SectionTitle("À propos")
         Text(
-            "Vinted Assistant 0.4.0. Toutes les données restent sur ce téléphone. " +
+            "Vinted Assistant ${appVersion(context)}. Toutes les données restent sur ce téléphone. " +
                 "L'application ne se connecte pas à ton compte Vinted et n'y agit jamais seule : " +
                 "elle prépare, tu publies. Le module bêta n'agit que dans la page que tu ouvres, à ta demande.",
             style = MaterialTheme.typography.bodySmall,
         )
         Spacer(Modifier.height(32.dp))
     }
+}
+
+/** Version installée, lue dans le paquet : permet de vérifier quelle APK tourne sur le téléphone. */
+fun appVersion(context: android.content.Context): String = try {
+    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
+} catch (e: Exception) {
+    "?"
 }
