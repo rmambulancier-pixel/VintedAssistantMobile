@@ -141,4 +141,32 @@ class SupplierOrderParserTest {
         assertEquals(0L, order.feesCents) // 0,01 € d'écart : arrondi, pas des frais
         assertEquals(1005L, order.shippingCents)
     }
+
+    @Test
+    fun datesWithNonBreakingSpacesAreRead() {
+        val expected = LocalDateTime.of(2026, 8, 20, 23, 5).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        assertEquals(expected, SupplierOrderParser.date("20\u00A0août\u00A02026, 23:05"))
+        assertEquals(
+            LocalDateTime.of(2026, 10, 13, 11, 30).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+            SupplierOrderParser.date("13\u202Foct.\u00A02026,\u00A011:30"),
+        )
+    }
+
+    @Test
+    fun freeItemsCostNothingEvenWhenTheOriginalPriceIsShown() {
+        fun order(free: Boolean, total: String) = JSONObject()
+            .put("url", "https://www.nihaojewelry.com/order/detail?id=1").put("ref", "NHFR608")
+            .put("shipping", "€ 8.79").put("total", total)
+            .put("items", JSONArray()
+                .put(JSONObject().put("name", "Bracelet trèfle (Doré)").put("price", "€ 2.70").put("qty", "1").put("image", "").put("free", free))
+                .put(JSONObject().put("name", "Collier tennis (45cm)").put("price", "€ 0.49").put("qty", "1").put("image", "")))
+            .toString()
+        // Drapeau « Essai gratuit » sur la ligne.
+        val flagged = SupplierOrderParser.parse(order(free = true, total = "€ 9.28"))!!
+        assertEquals(listOf(0L, 49L), flagged.lines.map { it.unitPriceCents })
+        // Total payé égal au port : toute la commande était offerte.
+        val allFree = SupplierOrderParser.parse(order(free = false, total = "€ 8.79"))!!
+        assertEquals(listOf(0L, 0L), allFree.lines.map { it.unitPriceCents })
+        assertEquals(0L, allFree.feesCents)
+    }
 }

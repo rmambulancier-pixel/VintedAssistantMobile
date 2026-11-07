@@ -46,7 +46,8 @@ object SupplierOrderParser {
             val it = items.optJSONObject(i) ?: continue
             val name = it.optString("name").trim().replace(Regex("\\s+"), " ")
                 .replace(Regex("^(?i)(essai gratuit|free trial)\\s*"), "").take(200)
-            val price = money(it.optString("price")) ?: continue
+            // Produit offert (« Essai gratuit ») : payé 0 €, son coût sera sa part du port.
+            val price = if (it.optBoolean("free")) 0L else money(it.optString("price")) ?: continue
             val qty = it.optString("qty").trim().toIntOrNull()?.coerceIn(1, 10_000) ?: 1
             // Prix 0 accepté : produit offert (« Essai gratuit »), son coût sera sa part du port.
             if (name.length < 3 || price < 0) continue
@@ -56,9 +57,13 @@ object SupplierOrderParser {
             lines += ParsedOrderLine(name, price, qty, image.takeIf { s -> s.startsWith("https://") }.orEmpty(), it.optString("url").trim(), sku)
         }
         if (lines.isEmpty()) return null
-        val itemsTotal = lines.sumOf { it.unitPriceCents * it.quantity }
         val shipping = money(o.optString("shipping")) ?: 0L
         val total = money(o.optString("total"))
+        // Total payé nul ou égal au seul port : tous les produits étaient offerts, quel que soit le prix affiché.
+        if (total != null && shipping > 0 && (total <= 5 || kotlin.math.abs(total - shipping) <= 5) && lines.any { it.unitPriceCents > 0 }) {
+            lines.replaceAll { it.copy(unitPriceCents = 0) }
+        }
+        val itemsTotal = lines.sumOf { it.unitPriceCents * it.quantity }
         val declaredFees = money(o.optString("fees")) ?: 0L
         // Frais non détaillés : écart entre le total payé et articles + port, s'il est positif et plausible.
         // Écart de quelques centimes = arrondi du site, pas des frais.
@@ -91,7 +96,8 @@ object SupplierOrderParser {
 
     /** « 13 oct. 2026, 11:30 », « 2026-10-12 14:33 », « 12/10/2026 » → millisecondes (fuseau du téléphone). */
     fun date(raw: String, zone: ZoneId = ZoneId.systemDefault()): Long? {
-        val t = raw.trim()
+        // Le site sépare souvent jour, mois et année par des espaces insécables, que \s ne reconnaît pas.
+        val t = raw.replace('\u00A0', ' ').replace('\u202F', ' ').replace('\u2007', ' ').trim()
         Regex("""(\d{1,2})\s+([\p{L}]{3,9})\.?\s+(\d{4})(?:,?\s+(\d{1,2}):(\d{2}))?""").find(t)?.let { m ->
             val word = m.groupValues[2].lowercase()
             // « juin » / « juil » avant « jui… » : on teste les préfixes les plus longs d'abord.

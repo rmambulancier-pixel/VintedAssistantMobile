@@ -73,10 +73,10 @@ object SupplierPageScripts {
           if(ref)out.ref=ref[1];
           // Date : ligne qui suit « Date de commande », sinon premier format de date reconnu.
           const dateRe=/\d{1,2}\s+[a-zéûôè]{3,9}\.?\s+\d{4}(?:,?\s+\d{1,2}:\d{2})?|\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2}(?:\s+\d{1,2}:\d{2})?|\d{1,2}[-\/.]\d{1,2}[-\/.]\d{4}/i;
-          for(let i=0;i<lines.length;i++){if(/date de commande|order date|date/i.test(lines[i])){const m=(lines[i]+' '+(lines[i+1]||'')).match(dateRe);if(m){out.date=m[0];break;}}}
+          for(let i=0;i<lines.length;i++){if(/date\s+de\s+commande|order\s+date|date/i.test(lines[i])){const m=(lines[i]+' '+(lines[i+1]||'')).match(dateRe);if(m){out.date=m[0];break;}}}
           if(!out.date){const d=body.match(dateRe);if(d)out.date=d[0];}
           // Livraison annoncée (« Prévu pour être livré le » puis la période) : commande pas encore reçue.
-          for(let i=0;i<lines.length;i++){if(/pr[ée]vu pour [êe]tre livr|livraison pr[ée]vue|estimated delivery|expected delivery/i.test(lines[i])){out.eta=(lines[i+1]||'').slice(0,60);break;}}
+          for(let i=0;i<lines.length;i++){if(/pr[ée]vu\s+pour\s+[êe]tre\s+livr|livraison\s+pr[ée]vue|estimated\s+delivery|expected\s+delivery/i.test(lines[i])){out.eta=(lines[i+1]||'').slice(0,60);break;}}
           function after(re){for(let i=0;i<lines.length;i++){if(re.test(lines[i])){const m=(lines[i]+' '+(lines[i+1]||'')).match(money);if(m)return m[0];}}return '';}
           out.shipping=after(/frais de port|frais d'exp|livraison|exp[ée]dition|shipping|freight/i);
           out.fees=after(/frais de service|frais de traitement|service fee|handling|taxe|tax|d[ée]douanement|customs|douane/i);
@@ -109,8 +109,8 @@ object SupplierPageScripts {
             // Image : les pages chargent les photos au défilement (data-src) ; on ignore les images « data: ».
             const cands=[img.currentSrc,img.src,img.getAttribute('data-src'),img.getAttribute('data-original'),img.getAttribute('data-lazy-src'),
               (img.getAttribute('srcset')||'').split(' ')[0]].filter(u=>u&&/^https:/.test(u));
-            out.items.push({name:name.slice(0,200),price:pm[0],qty:q?q[1]:'1',image:cands[0]||'',url:link?link.href:'',sku:sku?sku[1]:'',
-              free:/essai gratuit|free trial/i.test(text)});
+            out.items.push({name:name.slice(0,200),price:pm[0].replace(/[\u00a0\u202f]/g,' '),qty:q?q[1]:'1',image:cands[0]||'',url:link?link.href:'',sku:sku?sku[1]:'',
+              free:/essai\s+gratuit|free\s+trial/i.test(text)});
           });
           return JSON.stringify(out);
         })();
