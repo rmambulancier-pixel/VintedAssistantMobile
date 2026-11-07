@@ -25,15 +25,16 @@ class SupplierOrderParserTest {
                 item("Collier tennis strass argenté", "2,40 €", "1"),
                 item("Collier tennis strass argenté", "2,40 €", "1"), // doublon d'affichage
                 item("x", "€1,00", "1"), // nom trop court
-                item("Bijou gratuit", "€0,00", "1"),
+                item("Bijou gratuit", "€0,00", "1"), // produit offert : gardé, coût = part du port
             )))
             .put("shipping", "Frais de port €4,80")
             .put("total", "€12,00")
             .toString()
         val order = SupplierOrderParser.parse(json)!!
         assertEquals("NH2026101200123", order.orderRef)
-        assertEquals(2, order.lines.size)
+        assertEquals(3, order.lines.size)
         assertEquals(3, order.lines[0].quantity)
+        assertEquals(0L, order.lines[2].unitPriceCents)
         assertEquals(600L, order.itemsTotalCents)
         assertEquals(480L, order.shippingCents)
         assertEquals(120L, order.feesCents) // 12,00 − 6,00 − 4,80
