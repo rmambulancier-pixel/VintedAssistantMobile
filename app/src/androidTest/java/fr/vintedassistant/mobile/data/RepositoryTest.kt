@@ -325,8 +325,8 @@ class RepositoryTest {
     @Test
     fun relaunchCopiesSoldListingOntoOldestFreeLot() = runBlocking {
         val purchases = PurchaseRepository(db, photoStore = null, clock = { now })
-        purchases.saveOrder("Nihaojewelry", ParsedOrder("A", 1_000L, listOf(ParsedOrderLine("Cordon rouge", 100, 1, "", "")), 0, 0, null, ""), downloadImages = false)
-        purchases.saveOrder("Nihaojewelry", ParsedOrder("B", 2_000L, listOf(ParsedOrderLine("Cordon rouge", 150, 2, "", "")), 0, 0, null, ""), downloadImages = false)
+        purchases.saveOrder("Nihaojewelry", ParsedOrder("A", 1_000L, listOf(ParsedOrderLine("Cordon rouge", 100, 1, "", "")), 0, 0, null, ""), downloadImages = false, received = true)
+        purchases.saveOrder("Nihaojewelry", ParsedOrder("B", 2_000L, listOf(ParsedOrderLine("Cordon rouge", 150, 2, "", "")), 0, 0, null, ""), downloadImages = false, received = true)
         val orders = purchases.orders.first()
         val lotA = orders.first { it.orderRef == "A" }.items.single()
         val lotB = orders.first { it.orderRef == "B" }.items.single()
