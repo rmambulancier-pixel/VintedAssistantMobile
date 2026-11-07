@@ -95,6 +95,7 @@ object SupplierOrderParser {
         "jan" to 1, "fév" to 2, "fev" to 2, "feb" to 2, "mar" to 3, "avr" to 4, "apr" to 4, "mai" to 5, "may" to 5,
         "juin" to 6, "jun" to 6, "juil" to 7, "jul" to 7, "aoû" to 8, "aou" to 8, "aug" to 8, "sep" to 9,
         "oct" to 10, "nov" to 11, "déc" to 12, "dec" to 12,
+        "janv" to 1, "févr" to 2, "sept" to 9, "june" to 6, "july" to 7,
     )
 
     /** « 13 oct. 2026, 11:30 », « 2026-10-12 14:33 », « 12/10/2026 » → millisecondes (fuseau du téléphone). */
@@ -109,6 +110,23 @@ object SupplierOrderParser {
                 return try {
                     LocalDateTime.of(m.groupValues[3].toInt(), month, m.groupValues[1].toInt(),
                         m.groupValues[4].toIntOrNull() ?: 12, m.groupValues[5].toIntOrNull() ?: 0)
+                        .atZone(zone).toInstant().toEpochMilli()
+                } catch (e: Exception) {
+                    null
+                }
+            }
+        }
+        // Site en anglais : « Aug 20, 2026 », « Aug 20, 2026 11:05 PM ».
+        Regex("""([\p{L}]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})(?:,?\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?)?""").find(t)?.let { m ->
+            val word = m.groupValues[1].lowercase()
+            val month = MONTHS.sortedByDescending { it.first.length }.firstOrNull { word.startsWith(it.first) }?.second
+            if (month != null) {
+                var hour = m.groupValues[4].toIntOrNull() ?: 12
+                val pm = m.groupValues[6].lowercase()
+                if (pm == "pm" && hour < 12) hour += 12
+                if (pm == "am" && hour == 12) hour = 0
+                return try {
+                    LocalDateTime.of(m.groupValues[3].toInt(), month, m.groupValues[2].toInt(), hour, m.groupValues[5].toIntOrNull() ?: 0)
                         .atZone(zone).toInstant().toEpochMilli()
                 } catch (e: Exception) {
                     null

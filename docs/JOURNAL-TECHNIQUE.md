@@ -185,6 +185,12 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   Contrôle du nombre de pièces annoncé par le site. Au réimport, un produit nouvellement lu ne reprend
   jamais par position le rattachement d'un autre.
 
+- **0.10.3** : la page Nihaojewelry s'affiche en anglais dans l'application (« Order Qty », « Aug 20, 2026 »).
+  Dates au format anglais (mois en premier, AM/PM), libellés de livraison anglais. Variante coupée avant
+  « Order Qty », « Weight », prix. Photo : plus grande image à peu près carrée de la ligne (le bandeau
+  « SHIP » est écarté). Produit sans titre : titre du lien ou de l'image, sinon « Produit <Sku> ».
+  Réimport : le code produit prime sur le nom pour garder les rattachements.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

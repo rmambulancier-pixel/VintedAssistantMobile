@@ -410,6 +410,10 @@ class RepositoryTest {
         assertEquals(0, order.items.first { it.sku == "NH57425383" }.linkedCount)
         assertEquals(2, order.items.first { it.sku == "NH59670045" }.linkedCount)
 
+        // Nom corrigé à la relecture (« Order Qty » retiré) : le code produit suffit à garder les rattachements.
+        purchases.saveOrder("Nihaojewelry", withMissing.copy(lines = withMissing.lines.map { it.copy(name = it.name + " Order Qty : 1") }), downloadImages = false)
+        assertEquals(2, purchases.orders.first().single().items.first { it.sku == "NH59670045" }.linkedCount)
+
         // Achat saisi à la main : reçu d'office.
         purchases.saveOrder("Saisie manuelle", ParsedOrder("MANUEL-1", null, listOf(ParsedOrderLine("Bague", 300, 1, "", "")), 0, 0, null, ""), downloadImages = false, received = true)
         assertTrue(purchases.orders.first().first { it.orderRef == "MANUEL-1" }.received)

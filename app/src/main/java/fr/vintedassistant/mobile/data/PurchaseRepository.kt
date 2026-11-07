@@ -61,9 +61,10 @@ class PurchaseRepository(
         val oldItems = existing?.let { e -> dao.itemsOf(e.id).sortedBy { it.id } }.orEmpty()
         val used = HashSet<Long>()
         val matched = order.lines.mapIndexed { index, line ->
-            val bySku = if (line.sku.isBlank()) null else oldItems.firstOrNull {
-                it.id !in used && it.sku == line.sku && StockLedger.normalize(it.name) == StockLedger.normalize(line.name)
-            }
+            // Même code produit ; s'il apparaît plusieurs fois, même nom d'abord. Le nom seul peut changer
+            // d'une lecture à l'autre (nettoyage), le code non.
+            val sameSku = if (line.sku.isBlank()) emptyList() else oldItems.filter { it.id !in used && it.sku == line.sku }
+            val bySku = sameSku.firstOrNull { StockLedger.normalize(it.name) == StockLedger.normalize(line.name) } ?: sameSku.firstOrNull()
             // Par position seulement si les codes produit sont inconnus : un produit nouvellement lu
             // (ligne manquée à l'import précédent) ne doit pas prendre le rattachement d'un autre.
             val byPosition = if (line.sku.isNotBlank() && oldItems.any { it.sku.isNotBlank() }) null

@@ -72,11 +72,11 @@ object SupplierPageScripts {
           const ref=nh?[nh[0],nh[0]]:body.match(/(?:n[°o]\.?\s*de\s*commande|order\s*(?:no\.?|number|#|id))\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{5,})/i);
           if(ref)out.ref=ref[1];
           // Date : ligne qui suit « Date de commande », sinon premier format de date reconnu.
-          const dateRe=/\d{1,2}\s+[a-zéûôè]{3,9}\.?\s+\d{4}(?:,?\s+\d{1,2}:\d{2})?|\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2}(?:\s+\d{1,2}:\d{2})?|\d{1,2}[-\/.]\d{1,2}[-\/.]\d{4}/i;
-          for(let i=0;i<lines.length;i++){if(/date\s+de\s+commande|order\s+date|date/i.test(lines[i])){const m=(lines[i]+' '+(lines[i+1]||'')).match(dateRe);if(m){out.date=m[0];break;}}}
+          const dateRe=/\d{1,2}\s+[a-zéûôè]{3,9}\.?\s+\d{4}(?:,?\s+\d{1,2}:\d{2})?|[a-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}(?:,?\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[ap]m)?)?|\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2}(?:\s+\d{1,2}:\d{2})?|\d{1,2}[-\/.]\d{1,2}[-\/.]\d{4}/i;
+          for(let i=0;i<lines.length;i++){if(/date\s+de\s+commande|order\s+date|order\s+time|placed\s+on|date/i.test(lines[i])){const m=(lines[i]+' '+(lines[i+1]||'')).match(dateRe);if(m){out.date=m[0];break;}}}
           if(!out.date){const d=body.match(dateRe);if(d)out.date=d[0];}
           // Livraison annoncée (« Prévu pour être livré le » puis la période) : commande pas encore reçue.
-          for(let i=0;i<lines.length;i++){if(/pr[ée]vu\s+pour\s+[êe]tre\s+livr|livraison\s+pr[ée]vue|estimated\s+delivery|expected\s+delivery/i.test(lines[i])){out.eta=(lines[i+1]||'').slice(0,60);break;}}
+          for(let i=0;i<lines.length;i++){if(/pr[ée]vu\s+pour\s+[êe]tre\s+livr|livraison\s+pr[ée]vue|estimated\s+(?:delivery|arrival)|expected\s+(?:delivery|to\s+be\s+delivered)|delivered\s+(?:on|by|between)/i.test(lines[i])){out.eta=(lines[i+1]||'').slice(0,60);break;}}
           function after(re){for(let i=0;i<lines.length;i++){if(re.test(lines[i])){const m=(lines[i]+' '+(lines[i+1]||'')).match(money);if(m)return m[0];}}return '';}
           out.shipping=after(/frais de port|frais d'exp|livraison|exp[ée]dition|shipping|freight/i);
           out.fees=after(/frais de service|frais de traitement|service fee|handling|taxe|tax|d[ée]douanement|customs|douane/i);
@@ -88,6 +88,15 @@ object SupplierPageScripts {
           // Nombre de pièces annoncé par le site (« La quantité de produit 24 ») : contrôle de la lecture.
           for(let i=0;i<lines.length;i++){if(/quantit[ée]\s+de\s+produit|product\s+quantity|total\s+items/i.test(lines[i])){const m=(lines[i]+' '+(lines[i+1]||'')).match(/(\d{1,4})/);if(m){out.count=m[1];break;}}}
           const seen=new Set();
+          // Photo du produit : la plus grande image à peu près carrée ; les bandeaux larges (« SHIP ») et les icônes sont écartés.
+          function bestImg(card){
+            const imgs=Array.from(card.querySelectorAll('img'));
+            const ratio=i=>{const r=i.getBoundingClientRect();const w=r.width||i.naturalWidth,h=r.height||i.naturalHeight;return w&&h?w/h:1;};
+            const area=i=>{const r=i.getBoundingClientRect();return r.width*r.height;};
+            const ok=imgs.filter(i=>ratio(i)<=1.6&&ratio(i)>=0.6&&!/icon|badge|logo|flag|sprite|ship/i.test((i.currentSrc||i.src||'')+(i.className||'')));
+            const shown=ok.filter(i=>area(i)>=1600).sort((a,b)=>area(b)-area(a));
+            return shown[0]||ok.find(i=>i.getAttribute('data-src')||i.getAttribute('data-original'))||ok[0]||null;
+          }
           function readCard(card,img,nameBlock){
             const text=(card.innerText||'').trim();
             if(!money.test(text)||text.length>600||seen.has(card))return;
@@ -98,11 +107,16 @@ object SupplierPageScripts {
             const pm=[all.reduce((a,b)=>val(b)<val(a)?b:a)];
             // Nom : première ligne de texte du produit (le texte alternatif de l'image est souvent générique).
             const parts=((nameBlock||card).innerText||'').split('\n').map(s=>s.trim());
-            let name=parts.filter(s=>s.length>8&&!money.test(s)&&!/^sku|quantit|qty|qt[ée]|masse|poids|weight|^x\s?\d|d[ée]baller|ajouter au panier/i.test(s))[0]||(img&&img.alt||'').trim();
+            const titled=card.querySelector('a[title],[title]');
+            let name=parts.filter(s=>s.length>8&&!money.test(s)&&!/^sku|quantit|qty|qt[ée]|masse|poids|weight|canceled|cancelled|^x\s?\d|d[ée]baller|unpack|ajouter au panier|add to cart/i.test(s))[0]
+              ||(img&&img.alt||'').trim()||(titled&&titled.getAttribute('title')||'').trim();
             name=name.replace(/^(essai\s+gratuit|free\s+trial|gratuit|nouveau|new|hot|promo)\s*/i,'').replace(/\s*(\.\.\.|…)$/,'');
             // Variante (« 4mm Argent|18 pouces ») tirée de la ligne Sku, pour distinguer les déclinaisons.
             const sku=text.match(/sku\s*:\s*([A-Z0-9]+)\s*\|?\s*([^\n]*(?:\n(?!quantit|qt|masse|poids)[^\n]*)?)/i);
-            if(sku&&sku[2]){const v=sku[2].replace(/\s*\n\s*/g,' ').replace(/\|/g,' | ').trim();if(v)name+=' ('+v+')';}
+            const stop=/\s*(?:order\s*qty|canceled\s*qty|cancelled\s*qty|qt[ée]|quantit[ée]|qty|weight|total\s*weight|masse|poids|€|\d+(?:[.,]\d+)?\s*€).*$/is;
+            const variant=sku&&sku[2]?sku[2].replace(/\s*\n\s*/g,' ').replace(stop,'').replace(/\|/g,' | ').replace(/\s*\|\s*$/,'').replace(/\s+/g,' ').trim():'';
+            if(!name)name='Produit '+(sku?sku[1]:'');
+            if(variant)name+=' ('+variant+')';
             const q=text.match(/(?:qt[ée]|quantit[ée]|qty)\s*:?\s*(\d{1,4})/i)||text.match(/[x×]\s?(\d{1,4})\b/i)||text.match(/(\d{1,4})\s*(?:pcs|pi[èe]ces?)/i);
             const link=card.querySelector('a[href]');
             // Image : les pages chargent les photos au défilement (data-src) ; on ignore les images « data: ».
@@ -119,7 +133,7 @@ object SupplierPageScripts {
           minimal.forEach(b=>{
             let card=b;
             for(let i=0;i<4&&!card.querySelector('img')&&card.parentElement&&skuCount(card.parentElement)===1;i++)card=card.parentElement;
-            readCard(card,card.querySelector('img'),b);
+            readCard(card,bestImg(card),b);
           });
           // 2. Sinon (page sans Sku), repérage par les photos visibles.
           if(!minimal.length)Array.from(document.querySelectorAll('img')).filter(vis).forEach(img=>{

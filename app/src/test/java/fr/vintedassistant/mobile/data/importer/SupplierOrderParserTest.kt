@@ -183,4 +183,13 @@ class SupplierOrderParserTest {
         assertEquals(6, order.lines.size)
         assertEquals(6, order.expectedPieces)
     }
+
+    @Test
+    fun englishDatesAreRead() {
+        val z = ZoneId.systemDefault()
+        assertEquals(LocalDateTime.of(2026, 8, 20, 23, 5).atZone(z).toInstant().toEpochMilli(), SupplierOrderParser.date("Aug\u00A020, 2026 23:05:11"))
+        assertEquals(LocalDateTime.of(2026, 10, 13, 23, 30).atZone(z).toInstant().toEpochMilli(), SupplierOrderParser.date("Oct 13, 2026 11:30 PM"))
+        assertEquals(LocalDateTime.of(2026, 11, 7, 12, 0).atZone(z).toInstant().toEpochMilli(), SupplierOrderParser.date("November 7, 2026"))
+        assertEquals(LocalDateTime.of(2026, 11, 7, 13, 19).atZone(z).toInstant().toEpochMilli(), SupplierOrderParser.date("7 nov. 2026, 13:19"))
+    }
 }
