@@ -69,7 +69,10 @@ object SupplierOrderParser {
         val declaredFees = money(o.optString("fees")) ?: 0L
         // Frais non détaillés : écart entre le total payé et articles + port, s'il est positif et plausible.
         // Écart de quelques centimes = arrondi du site, pas des frais.
-        val derivedFees = total?.let { it - itemsTotal - shipping }?.takeIf { it > 5 && it <= itemsTotal * 2 } ?: 0L
+        // Écart positif : frais non détaillés. Écart négatif : coupon ou remise (« Apply Coupon −2,43 € »).
+        // Écart de quelques centimes : arrondi du site.
+        val derivedFees = total?.let { it - itemsTotal - shipping }
+            ?.takeIf { kotlin.math.abs(it) > 5 && it >= -itemsTotal && it <= itemsTotal * 2 } ?: 0L
         val fees = if (declaredFees > 0) declaredFees else derivedFees
         val ref = o.optString("ref").trim().take(60).ifEmpty { o.optString("url").substringAfterLast('/').take(60) }
         return ParsedOrder(
@@ -101,7 +104,7 @@ object SupplierOrderParser {
     /** « 13 oct. 2026, 11:30 », « 2026-10-12 14:33 », « 12/10/2026 » → millisecondes (fuseau du téléphone). */
     fun date(raw: String, zone: ZoneId = ZoneId.systemDefault()): Long? {
         // Le site sépare souvent jour, mois et année par des espaces insécables, que \s ne reconnaît pas.
-        val t = raw.replace('\u00A0', ' ').replace('\u202F', ' ').replace('\u2007', ' ').trim()
+        val t = raw.replace(Regex("(?i)free\\s*trial|essai\\s*gratuit"), " ").replace('\u00A0', ' ').replace('\u202F', ' ').replace('\u2007', ' ').trim()
         Regex("""(\d{1,2})\s+([\p{L}]{3,9})\.?\s+(\d{4})(?:,?\s+(\d{1,2}):(\d{2}))?""").find(t)?.let { m ->
             val word = m.groupValues[2].lowercase()
             // « juin » / « juil » avant « jui… » : on teste les préfixes les plus longs d'abord.

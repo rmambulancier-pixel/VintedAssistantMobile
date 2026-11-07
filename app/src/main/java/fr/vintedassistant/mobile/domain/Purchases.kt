@@ -51,14 +51,15 @@ object LandedCost {
         return lines.map { line ->
             val qty = line.quantity.coerceAtLeast(1)
             val shareOfLine = when {
-                extraCents <= 0 -> BigDecimal.ZERO
+                extraCents == 0L -> BigDecimal.ZERO
                 value > 0 -> BigDecimal.valueOf(extraCents).multiply(BigDecimal.valueOf(line.unitPriceCents * qty))
                     .divide(BigDecimal.valueOf(value), 6, RoundingMode.HALF_UP)
                 else -> BigDecimal.valueOf(extraCents).multiply(BigDecimal.valueOf(qty.toLong()))
                     .divide(BigDecimal.valueOf(units), 6, RoundingMode.HALF_UP)
             }
             val perUnit = shareOfLine.divide(BigDecimal.valueOf(qty.toLong()), 0, RoundingMode.HALF_UP).toLong()
-            line.unitPriceCents + perUnit
+            // Une remise peut baisser le coût, jamais le rendre négatif.
+            (line.unitPriceCents + perUnit).coerceAtLeast(0)
         }
     }
 }

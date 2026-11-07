@@ -192,4 +192,31 @@ class SupplierOrderParserTest {
         assertEquals(LocalDateTime.of(2026, 11, 7, 12, 0).atZone(z).toInstant().toEpochMilli(), SupplierOrderParser.date("November 7, 2026"))
         assertEquals(LocalDateTime.of(2026, 11, 7, 13, 19).atZone(z).toInstant().toEpochMilli(), SupplierOrderParser.date("7 nov. 2026, 13:19"))
     }
+
+    /** Vraie commande NHFR610132392734 : coupon de 2,43 €, total payé 31,07 €. */
+    @Test
+    fun couponLowersLandedCost() {
+        val items = JSONArray()
+            .put(JSONObject().put("name", "Collier tennis (18 pouces)").put("price", "0.50 €").put("qty", "5").put("image", "").put("sku", "NH53575025"))
+            .put(JSONObject().put("name", "Cordon (Rouge)").put("price", "0.76 €").put("qty", "4").put("image", "").put("sku", "NH59670045"))
+            .put(JSONObject().put("name", "Reste de la commande").put("price", "19.73 €").put("qty", "1").put("image", "").put("sku", "NH0"))
+        val order = SupplierOrderParser.parse(
+            JSONObject().put("ref", "NHFR610132392734").put("date", "Oct 13, 2026 11:30").put("count", "10")
+                .put("shipping", "9.22 €").put("total", "31.07 €").put("items", items).toString(),
+        )!!
+        assertEquals(2427L, order.itemsTotalCents)
+        assertEquals(-242L, order.feesCents) // 31,07 − 24,27 − 9,22 : la remise
+        val landed = fr.vintedassistant.mobile.domain.LandedCost.allocate(
+            order.lines.map { fr.vintedassistant.mobile.domain.PurchaseLine(it.unitPriceCents, it.quantity) }, order.shippingCents + order.feesCents,
+        )
+        assertEquals(64L, landed[0]) // 0,50 € + part de (9,22 − 2,42) : 0,71 € sans la remise
+    }
+
+    @Test
+    fun freeTrialBadgeDoesNotHideTheDate() {
+        assertEquals(
+            LocalDateTime.of(2026, 8, 20, 23, 5).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+            SupplierOrderParser.date("FREE TRIALAug 20, 2026 23:05"),
+        )
+    }
 }

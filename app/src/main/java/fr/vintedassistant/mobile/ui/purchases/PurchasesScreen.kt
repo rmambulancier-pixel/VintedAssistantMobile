@@ -237,7 +237,8 @@ fun PurchasesScreen(
                             }
                             Text(
                                 "Réf. ${order.orderRef} • total ${euros(order.totalCents)} (port ${euros(order.shippingCents)}" +
-                                    (if (order.feesCents > 0) ", frais ${euros(order.feesCents)}" else "") + ")",
+                                    (if (order.feesCents > 0) ", frais ${euros(order.feesCents)}" else "") +
+                                    (if (order.feesCents < 0) ", remise ${euros(-order.feesCents)}" else "") + ")",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }

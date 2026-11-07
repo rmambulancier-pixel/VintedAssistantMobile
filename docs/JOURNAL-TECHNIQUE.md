@@ -209,6 +209,13 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   fiches à supprimer, rattachements à poser ou déplacer. Chaque étape vérifie le titre (et le statut) de la
   fiche visée et la place libre, en simulant l'effet des étapes précédentes ; aperçu ✓/✗ et confirmation.
 
+- **0.11.1** : lecture des commandes réécrite d'après la vraie page (copies du 7 novembre) : une
+  `.product-item` par produit, photo `img.img`, nom sans le badge « FREE TRIAL », code et variante de la
+  ligne « SKU: », quantité commandée moins annulée, prix payé, date du bloc « Order Date », totaux du
+  bloc `.pay-data`. L'image cachée `freeShip-img` (le « SHIP ») était prise pour la photo. Coupon pris en
+  compte (frais négatifs = remise, répartie dans le coût de revient). Lecture générique gardée en secours.
+  Validé sous Chromium sur les deux pages réelles (13 et 24 produits, dates, photos, noms).
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

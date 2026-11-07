@@ -130,6 +130,37 @@ object SupplierPageScripts {
             out.items.push({name:name.slice(0,200),price:pm[0].replace(/[  ]/g,' '),qty:q?q[1]:'1',image:cands[0]||'',url:link?link.href:'',sku:sku?sku[1]:'',
               free:/essai\s+gratuit|free\s+trial/i.test(text)});
           }
+          // Page Nihaojewelry (structure relevée le 7 novembre 2026) : une « .product-item » par produit.
+          const own=e=>{if(!e)return '';const c=e.cloneNode(true);c.querySelectorAll('span').forEach(x=>x.remove());return (c.textContent||'').replace(/\s+/g,' ').trim();};
+          const flat=e=>(e?(e.textContent||''):'').replace(/\s+/g,' ').trim();
+          const od=Array.from(document.querySelectorAll('.order-data .data-view')).find(v=>/order\s+date|date\s+de\s+commande/i.test(flat(v.querySelector('.title'))));
+          if(od){const v=own(od.querySelector('.value'))||flat(od.querySelector('.value'));const m=v.match(dateRe);if(m)out.date=m[0];}
+          const pay={};
+          document.querySelectorAll('.pay-data .data-view').forEach(v=>{const sp=v.querySelectorAll('span');if(sp.length>=2)pay[flat(sp[0]).toLowerCase()]=flat(sp[sp.length-1]);});
+          if(pay['product quantity'])out.count=(pay['product quantity'].match(/\d+/)||[''])[0];
+          if(pay['shipping fee'])out.shipping=pay['shipping fee'];
+          if(pay['total'])out.total=pay['total'];
+          document.querySelectorAll('.product-item').forEach(item=>{
+            const skuEl=Array.from(item.querySelectorAll('span.sku')).find(e=>/^\s*sku\s*:/i.test(e.textContent||''));
+            const parts=skuEl?flat(skuEl).replace(/^sku\s*:\s*/i,'').split('|').map(x=>x.trim()).filter(Boolean):[];
+            const nameEl=item.querySelector('.info .van-ellipsis');
+            let name=own(nameEl)||flat(nameEl);
+            name=name.replace(/^(essai\s+gratuit|free\s+trial)\s*/i,'');
+            if(!name)name='Produit '+(parts[0]||'');
+            if(parts.length>1)name+=' ('+parts.slice(1).join(' | ')+')';
+            const t=flat(item);
+            const ordered=+((t.match(/order\s+qty\s*:\s*(\d+)/i)||[])[1]||1);
+            const canceled=+((t.match(/canceled\s+qty\s*:\s*(\d+)/i)||[])[1]||0);
+            const priceBox=item.querySelector('.primary .flex');
+            const paid=priceBox&&priceBox.firstElementChild?flat(priceBox.firstElementChild):((t.match(money)||[''])[0]);
+            const img=item.querySelector('img.img')||item.querySelector('.specialGoodsIdentification img');
+            const src=img?[img.getAttribute('data-src'),img.currentSrc,img.src].filter(u=>u&&/^https:/.test(u))[0]||'':'';
+            if(ordered-canceled<=0)return;
+            out.items.push({name:name.slice(0,200),price:paid,qty:String(ordered-canceled),image:src,url:'',sku:parts[0]||'',
+              free:/free\s*trial|essai\s*gratuit/i.test(flat(nameEl))});
+          });
+          // Autres pages (format inconnu) : lecture générique.
+          if(!out.items.length){
           // 1. Lecture d'origine, éprouvée sur la vraie page : chaque photo produit visible mène à sa ligne.
           Array.from(document.querySelectorAll('img')).filter(vis).forEach(img=>{
             const r=img.getBoundingClientRect();if(r.width<40||r.width>420)return;
@@ -151,6 +182,7 @@ object SupplierPageScripts {
             known.add(skuOf(b));
             readCard(card,bestImg(card),b);
           });
+          }
           return JSON.stringify(out);
         })();
     """.trimIndent()
