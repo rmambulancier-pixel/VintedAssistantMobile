@@ -170,7 +170,10 @@ class MainViewModel(
     }
 
     /** Lit l'archive ZIP de l'export RGPD et affiche ce qui a été trouvé, sans rien importer encore. */
+    private var exportUri: Uri? = null
+
     fun readExport(uri: Uri) = launchSafely("Archive illisible. Choisis le fichier ZIP envoyé par Vinted.") {
+        exportUri = uri
         val report = withContext(Dispatchers.IO) {
             appContext.contentResolver.openInputStream(uri)?.use { VintedExportParser.parse(it) }
         } ?: throw IllegalStateException("Fichier introuvable")
@@ -179,8 +182,28 @@ class MainViewModel(
 
     fun confirmExportImport() = launchSafely("Import impossible.") {
         val report = _exportReport.value ?: return@launchSafely
-        val added = repository.importFromExport(report.candidates)
         _exportReport.value = null
+        if (report.isHtml) {
+            val uri = exportUri
+            _message.value = "Import de l'export Vinted en cours…"
+            val r = repository.importVintedExport(report) { wanted ->
+                val found = HashMap<String, ByteArray>()
+                if (uri != null) withContext(Dispatchers.IO) {
+                    appContext.contentResolver.openInputStream(uri)?.use { VintedExportParser.readEntries(it, wanted) { name, bytes -> found[name] = bytes } }
+                }
+                found
+            }
+            refreshClock()
+            _message.value = buildString {
+                append("Export Vinted importé : ${r.updated} fiche(s) mise(s) à jour, ${r.created} ajoutée(s)")
+                if (r.markedSold > 0) append(", ${r.markedSold} passée(s) en « Vendu »")
+                append(". Ventes : ${r.salesDated} datée(s), ${r.salesAdded} ajoutée(s).")
+                if (r.photosAdded > 0) append(" ${r.photosAdded} photo(s) ajoutée(s).")
+                if (r.unmatchedOrders > 0) append(" ${r.unmatchedOrders} commande(s) non rattachée(s) à une annonce.")
+            }
+            return@launchSafely
+        }
+        val added = repository.importFromExport(report.candidates)
         _message.value = "$added article(s) ajouté(s) en brouillon depuis l'export Vinted. Complète leur coût d'achat."
     }
 

@@ -376,6 +376,152 @@ class ArticleRepository(
         )
     }
 
+    data class ExportImportReport(
+        val updated: Int,
+        val created: Int,
+        val markedSold: Int,
+        val salesDated: Int,
+        val salesAdded: Int,
+        val photosAdded: Int,
+        val unmatchedOrders: Int,
+    )
+
+    /**
+     * Import de l'export Vinted au format HTML. Chaque annonce est rapprochée de sa fiche par son numéro
+     * Vinted ; à défaut, par un titre identique sur une fiche sans lien ou liée à une annonce supprimée
+     * (republication). Ce que l'utilisateur a saisi n'est jamais écrasé : seuls les champs vides sont
+     * complétés. Les annonces vendues d'après les commandes passent en « Vendu », avec la vraie date et le
+     * vrai montant de la vente. Les photos ne sont ajoutées qu'aux fiches qui n'en ont aucune.
+     */
+    suspend fun importVintedExport(
+        report: fr.vintedassistant.mobile.data.importer.ExportReport,
+        loadPhotos: suspend (Set<String>) -> Map<String, ByteArray>,
+    ): ExportImportReport {
+        val now = clock()
+        val sold = report.sold.datings.associateBy { it.articleId }
+        val deletedIds = report.deleted.mapNotNull { it.itemId }.toSet()
+        val needPhotos = LinkedHashMap<Long, List<String>>()
+        var updated = 0
+        var created = 0
+        var markedSold = 0
+        var salesDated = 0
+        var salesAdded = 0
+        db.withTransaction {
+            val all = articleDao.getAll()
+            val withPhotos = all.filter { photoDao.forArticle(it.id).isNotEmpty() }.map { it.id }.toHashSet()
+            val claimed = HashSet<Long>()
+            for (l in report.listings.sortedBy { it.createdAt ?: 0L }) {
+                val itemId = l.itemId ?: continue
+                val dating = sold[itemId]
+                val key = fr.vintedassistant.mobile.domain.StockLedger.normalize(l.title)
+                val wantSold = dating != null
+                val existing = all.firstOrNull { it.id !in claimed && VintedLinks.itemId(it.vintedUrl) == itemId }
+                    ?: all.filter {
+                        it.id !in claimed && fr.vintedassistant.mobile.domain.StockLedger.normalize(it.title) == key &&
+                            (it.vintedUrl.isBlank() || VintedLinks.itemId(it.vintedUrl) in deletedIds)
+                    }.sortedBy { (ArticleStatus.fromLabel(it.status) == ArticleStatus.SOLD) != wantSold }.firstOrNull()
+                val (cleanDescription, foundKeywords) = ListingTemplates.splitKeywords(l.description)
+                val articleId: Long
+                if (existing == null) {
+                    articleId = articleDao.insert(
+                        ArticleEntity(
+                            title = l.title.take(Article.TITLE_MAX_LENGTH),
+                            costCents = 0,
+                            priceCents = l.priceCents ?: 0,
+                            status = (if (wantSold) ArticleStatus.SOLD else ArticleStatus.ONLINE).label,
+                            createdAt = now,
+                            updatedAt = now,
+                            brand = l.brand.take(120),
+                            size = l.size.take(120),
+                            condition = l.condition.take(60),
+                            color = l.color.take(60),
+                            description = cleanDescription,
+                            keywords = foundKeywords,
+                            vintedUrl = l.url,
+                            favoritesCount = l.favorites,
+                            viewsCount = l.views,
+                            firstPublishedAt = l.createdAt,
+                        )
+                    )
+                    created++
+                    needPhotos[articleId] = l.photoPaths
+                } else {
+                    articleId = existing.id
+                    val status = ArticleStatus.fromLabel(existing.status)
+                    val newStatus = if (wantSold) ArticleStatus.SOLD else status
+                    if (newStatus != status) markedSold++
+                    articleDao.update(
+                        existing.copy(
+                            status = newStatus.label,
+                            priceCents = if (!wantSold && status.inStock) l.priceCents ?: existing.priceCents else existing.priceCents,
+                            brand = existing.brand.ifBlank { l.brand.take(120) },
+                            size = existing.size.ifBlank { l.size.take(120) },
+                            condition = existing.condition.ifBlank { l.condition.take(60) },
+                            color = existing.color.ifBlank { l.color.take(60) },
+                            description = existing.description.ifBlank { cleanDescription },
+                            keywords = existing.keywords.ifBlank { foundKeywords },
+                            vintedUrl = l.url,
+                            favoritesCount = l.favorites ?: existing.favoritesCount,
+                            viewsCount = l.views ?: existing.viewsCount,
+                            // Vraie date de mise en ligne de l'annonce, sauf republication déjà notée dans l'application.
+                            firstPublishedAt = if (existing.lastPublishedAt == null) l.createdAt ?: existing.firstPublishedAt else existing.firstPublishedAt,
+                            updatedAt = now,
+                        )
+                    )
+                    updated++
+                    if (existing.id !in withPhotos && l.photoPaths.isNotEmpty()) needPhotos[articleId] = l.photoPaths
+                }
+                claimed += articleId
+                if (dating != null) {
+                    val article = articleDao.getById(articleId) ?: continue
+                    val sales = saleDao.forArticle(articleId)
+                    val undated = sales.firstOrNull { !it.dateKnown }
+                    val shipping = if (dating.orderStatus.contains("envoy", ignoreCase = true)) ShippingStatus.SHIPPED else ShippingStatus.DELIVERED
+                    when {
+                        sales.any { it.dateKnown } -> Unit // vente déjà enregistrée à la main : on n'y touche pas
+                        undated != null -> {
+                            saleDao.update(
+                                undated.copy(
+                                    soldAt = dating.soldAt, dateKnown = true, salePriceCents = dating.priceCents,
+                                    listedAt = l.createdAt ?: undated.listedAt, shippingStatus = shipping.label,
+                                )
+                            )
+                            salesDated++
+                        }
+                        else -> {
+                            saleDao.insert(
+                                SaleEntity(
+                                    articleId = articleId, title = article.title, category = article.category,
+                                    salePriceCents = dating.priceCents, costCents = article.costCents, feesCents = 0,
+                                    soldAt = dating.soldAt, listedAt = l.createdAt, buyer = "",
+                                    shippingStatus = shipping.label, shippedAt = null, labelFile = null,
+                                    notes = "Importée de l'export Vinted", dateKnown = true,
+                                )
+                            )
+                            salesAdded++
+                        }
+                    }
+                }
+            }
+        }
+        // Photos en dehors de la transaction : lecture de l'archive et réencodage.
+        var photosAdded = 0
+        val store = photoStore
+        if (store != null && needPhotos.isNotEmpty()) {
+            val bytes = loadPhotos(needPhotos.values.flatten().toSet())
+            for ((articleId, paths) in needPhotos) {
+                var position = photoDao.maxPosition(articleId) + 1
+                for (path in paths.take(20)) {
+                    val data = bytes[path] ?: continue
+                    val name = try { store.importBytes(data) } catch (e: Exception) { continue }
+                    photoDao.insert(PhotoEntity(articleId = articleId, fileName = name, position = position++, createdAt = now))
+                    photosAdded++
+                }
+            }
+        }
+        return ExportImportReport(updated, created, markedSold, salesDated, salesAdded, photosAdded, report.sold.unmatched.size)
+    }
+
     data class CleanupReport(val salesCreated: Int, val keywordsMoved: Int, val photosRemoved: Int, val noticesReclassified: Int)
 
     /**

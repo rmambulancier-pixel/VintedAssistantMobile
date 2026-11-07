@@ -165,6 +165,19 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
     main reçu d'office ; état conservé au réimport. Pièces en livraison comptées à part, sans
     fiche ni remise en vente possibles avant « J'ai reçu cette commande ».
 
+- **0.10** : export Vinted RGPD réel (ZIP de pages HTML, novembre 2026).
+  - `VintedHtmlExport` lit `listings/`, `orders/` et `deleted_items/index.html` (blocs
+    `<div class="cell" itemscope>`, valeurs en `itemprop`). Numéro d'annonce tiré du dossier des photos.
+  - `ExportSales` : chaque article nommé dans une commande est rattaché à l'annonce de même titre mise
+    en ligne avant la commande (la plus ancienne en cas d'annonces identiques). Commande sans titre :
+    rattachée seulement sans ambiguïté. Commandes annulées et antérieures à la première annonce ignorées.
+    Sur l'export réel : 25 ventes, 165,10 €, 0 commande non rattachée, 8 annonces en vente.
+  - Import : fusion par numéro d'annonce, ou titre identique sur une fiche sans lien ou liée à une annonce
+    supprimée (republication). Champs vides complétés, ventes datées avec le montant réel, ventes
+    manquantes ajoutées, photos de l'archive pour les fiches qui n'en ont pas. Réimport sans effet.
+  - Export des données de l'application (`DataExport`, `DataAudit`) : ZIP `rapport.txt` + `donnees.json`,
+    sans photos, pseudos d'acheteurs ni messages, partagé par le menu Android (cache privé, FileProvider).
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

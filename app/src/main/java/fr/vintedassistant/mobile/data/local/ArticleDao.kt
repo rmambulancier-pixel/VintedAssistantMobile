@@ -70,6 +70,12 @@ interface SaleDao {
     @Query("SELECT * FROM sales ORDER BY sold_at DESC, id DESC")
     fun observeAll(): Flow<List<SaleEntity>>
 
+    @Query("SELECT * FROM sales WHERE article_id = :articleId ORDER BY id")
+    suspend fun forArticle(articleId: Long): List<SaleEntity>
+
+    @Query("SELECT * FROM sales ORDER BY sold_at DESC, id DESC")
+    suspend fun getAll(): List<SaleEntity>
+
     @Query("SELECT * FROM sales WHERE id = :id")
     suspend fun getById(id: Long): SaleEntity?
 

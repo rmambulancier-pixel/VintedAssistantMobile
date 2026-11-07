@@ -15,6 +15,10 @@ import fr.vintedassistant.mobile.domain.ShippingStatus
 import fr.vintedassistant.mobile.domain.VintedEventKind
 import fr.vintedassistant.mobile.data.importer.ExportCandidate
 import fr.vintedassistant.mobile.data.importer.ImportedListing
+import fr.vintedassistant.mobile.data.importer.ExportReport
+import fr.vintedassistant.mobile.data.importer.ExportOrderItem
+import fr.vintedassistant.mobile.data.importer.ExportOrder
+import fr.vintedassistant.mobile.data.importer.ExportListing
 import fr.vintedassistant.mobile.data.importer.ParsedOrder
 import fr.vintedassistant.mobile.data.importer.ParsedOrderLine
 import kotlinx.coroutines.flow.first
@@ -401,5 +405,56 @@ class RepositoryTest {
         // Achat saisi à la main : reçu d'office.
         purchases.saveOrder("Saisie manuelle", ParsedOrder("MANUEL-1", null, listOf(ParsedOrderLine("Bague", 300, 1, "", "")), 0, 0, null, ""), downloadImages = false, received = true)
         assertTrue(purchases.orders.first().first { it.orderRef == "MANUEL-1" }.received)
+    }
+
+    @Test
+    fun htmlExportMergesByItemIdDatesSalesAndAddsMissing() = runBlocking {
+        // Fiche déjà importée par le navigateur : vendue, sans date.
+        val sold = repo.upsertImported(ImportedListing(201, "https://www.vinted.fr/items/201-croix", "Croix dorée", 500), sold = true).articleId
+        // Fiche en ligne liée à une ancienne annonce supprimée (republication).
+        val republished = repo.create(fields().copy(title = "Bracelet trèfle noir", vintedUrl = "https://www.vinted.fr/items/150"))
+        repo.markPublished(republished)
+        val before = repo.articles.first().size
+
+        val listings = listOf(
+            ExportListing(201, "Croix dorée", "Belle croix", "Vintage", "", "Neuf sans étiquette", "Doré", 80, 0, 1_000L, 500, emptyList()),
+            ExportListing(202, "Bracelet trèfle noir", "Joli", "", "", "", "", 30, 4, 2_000L, 500, emptyList()),
+            ExportListing(203, "Collier tennis", "", "", "", "", "", 5, 2, 3_000L, 900, emptyList()),
+            ExportListing(204, "Cordon rouge", "", "", "", "", "", 20, 0, 1_500L, 800, emptyList()),
+        )
+        val orders = listOf(
+            ExportOrder(5_000L, "Commande finalisée", 450, listOf(ExportOrderItem("Croix dorée", 450))),
+            ExportOrder(6_000L, "Commande envoyée", 800, listOf(ExportOrderItem("Cordon rouge", 800))),
+        )
+        val report = ExportReport(emptyList(), emptyList(), listings, orders, listOf(ExportListing(150, "Bracelet trèfle noir", "", "", "", "", "", 0, 0, 500L, 500, emptyList())))
+        val r = repo.importVintedExport(report) { emptyMap() }
+
+        assertEquals(2, r.updated)
+        assertEquals(2, r.created) // collier en ligne, cordon vendu
+        assertEquals(1, r.salesDated)
+        assertEquals(1, r.salesAdded)
+        assertEquals(before + 2, repo.articles.first().size)
+
+        val croix = repo.getArticle(sold)!!
+        assertEquals("Vintage", croix.brand) // champ vide complété
+        val croixSale = repo.sales.first().first { it.articleId == sold }
+        assertTrue(croixSale.dateKnown)
+        assertEquals(5_000L, croixSale.soldAt)
+        assertEquals(450L, croixSale.salePriceCents)
+
+        val bracelet = repo.getArticle(republished)!!
+        assertEquals("https://www.vinted.fr/items/202", bracelet.vintedUrl) // suit la nouvelle annonce
+        assertEquals(ArticleStatus.ONLINE, bracelet.status)
+
+        val cordon = repo.articles.first().first { it.title == "Cordon rouge" }
+        assertEquals(ArticleStatus.SOLD, cordon.status)
+        assertEquals(ShippingStatus.SHIPPED, repo.sales.first().first { it.articleId == cordon.id }.shippingStatus)
+        assertEquals(ArticleStatus.ONLINE, repo.articles.first().first { it.title == "Collier tennis" }.status)
+
+        // Deuxième import : rien de nouveau.
+        val again = repo.importVintedExport(report) { emptyMap() }
+        assertEquals(0, again.created)
+        assertEquals(0, again.salesDated + again.salesAdded)
+        assertEquals(before + 2, repo.articles.first().size)
     }
 }

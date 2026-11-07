@@ -21,7 +21,19 @@ data class ExportCandidate(
 /** Résumé d'un fichier de l'export : sert à adapter l'import au format réel. */
 data class ExportFileSummary(val name: String, val records: Int, val keys: List<String>)
 
-data class ExportReport(val candidates: List<ExportCandidate>, val files: List<ExportFileSummary>) {
+data class ExportReport(
+    val candidates: List<ExportCandidate>,
+    val files: List<ExportFileSummary>,
+    /** Export au format HTML (pages web) : annonces, commandes, annonces supprimées. */
+    val listings: List<ExportListing> = emptyList(),
+    val orders: List<ExportOrder> = emptyList(),
+    val deleted: List<ExportListing> = emptyList(),
+) {
+    val isHtml: Boolean get() = listings.isNotEmpty()
+
+    /** Ventes retrouvées dans les commandes (numéro d'annonce → date et montant). */
+    val sold: ExportSales.Result by lazy { ExportSales.soldListings(listings, orders) }
+
     /** Texte à copier pour transmettre la structure (noms de fichiers et de champs, aucune valeur). */
     fun structureText(): String = buildString {
         appendLine("Structure de l'export Vinted (${files.size} fichier(s) lus, aucune donnée personnelle) :")
@@ -49,11 +61,27 @@ object VintedExportParser {
         val files = mutableListOf<ExportFileSummary>()
         val preferred = mutableListOf<ExportCandidate>()
         val others = mutableListOf<ExportCandidate>()
+        val listings = mutableListOf<ExportListing>()
+        val orders = mutableListOf<ExportOrder>()
+        val deleted = mutableListOf<ExportListing>()
         ZipInputStream(zip).use { stream ->
             while (true) {
                 val entry = stream.nextEntry ?: break
                 val name = entry.name
                 val lower = name.lowercase()
+                if (!entry.isDirectory && lower.endsWith("index.html")) {
+                    val folder = lower.substringBeforeLast("/index.html").substringAfterLast('/')
+                    if (folder == "listings" || folder == "orders" || folder == "deleted_items") {
+                        val html = readLimited(stream)?.toString(Charsets.UTF_8) ?: continue
+                        when (folder) {
+                            "listings" -> listings += VintedHtmlExport.listings(html, name.substringBeforeLast("/index.html"))
+                            "orders" -> orders += VintedHtmlExport.orders(html)
+                            else -> deleted += VintedHtmlExport.listings(html, name.substringBeforeLast("/index.html"))
+                        }
+                        files += ExportFileSummary(name, if (folder == "orders") orders.size else if (folder == "listings") listings.size else deleted.size, emptyList())
+                    }
+                    continue
+                }
                 if (entry.isDirectory || !(lower.endsWith(".json") || lower.endsWith(".csv"))) continue
                 val bytes = readLimited(stream) ?: continue
                 val records = try {
@@ -68,7 +96,19 @@ object VintedExportParser {
             }
         }
         val chosen = preferred.ifEmpty { others }
-        return ExportReport(dedupe(chosen), files)
+        return ExportReport(if (listings.isEmpty()) dedupe(chosen) else emptyList(), files, listings, orders, deleted)
+    }
+
+    /** Lit dans l'archive les fichiers demandés (photos des annonces), sans charger le reste. */
+    fun readEntries(zip: InputStream, wanted: Set<String>, onEntry: (String, ByteArray) -> Unit) {
+        if (wanted.isEmpty()) return
+        ZipInputStream(zip).use { stream ->
+            while (true) {
+                val entry = stream.nextEntry ?: break
+                if (entry.isDirectory || entry.name !in wanted) continue
+                readLimited(stream)?.let { onEntry(entry.name, it) }
+            }
+        }
     }
 
     private fun readLimited(stream: ZipInputStream): ByteArray? {

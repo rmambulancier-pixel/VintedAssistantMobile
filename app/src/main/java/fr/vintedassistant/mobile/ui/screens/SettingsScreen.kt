@@ -36,6 +36,8 @@ import fr.vintedassistant.mobile.data.AppSettings
 import fr.vintedassistant.mobile.domain.Finance
 import fr.vintedassistant.mobile.reminders.RepublishReminder
 import fr.vintedassistant.mobile.ui.Field
+import fr.vintedassistant.mobile.ui.container
+import kotlinx.coroutines.launch
 import fr.vintedassistant.mobile.ui.SectionTitle
 import fr.vintedassistant.mobile.ui.copyToClipboard
 import fr.vintedassistant.mobile.data.importer.ExportReport
@@ -77,21 +79,38 @@ fun SettingsScreen(
             title = { Text("Export Vinted lu") },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("${report.candidates.size} article(s) reconnu(s) dans ${report.files.size} fichier(s).")
-                    report.candidates.take(5).forEach { Text("• ${it.title}" + (it.priceCents?.let { p -> " (${Money.formatEuros(p)})" } ?: "")) }
-                    Text(
-                        "Les articles déjà présents (même nom, même prix) ne seront pas dupliqués. " +
-                            "Le format de l'export n'est pas documenté par Vinted : si le résultat est faux, " +
-                            "copie la structure et transmets-la pour adapter l'import.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                    if (report.isHtml) {
+                        val sold = report.sold
+                        Text("${report.listings.size} annonce(s) avec ${report.listings.sumOf { it.photoPaths.size }} photo(s).")
+                        Text(
+                            "${sold.datings.size} article(s) vendu(s) retrouvé(s) dans les commandes, pour " +
+                                Money.formatEuros(sold.datings.sumOf { it.priceCents }) + "." +
+                                (if (sold.unmatched.isNotEmpty()) " ${sold.unmatched.size} commande(s) sans annonce correspondante." else "") +
+                                (if (sold.ignored > 0) " ${sold.ignored} commande(s) ignorée(s) (annulée ou antérieure à ta première annonce)." else ""),
+                        )
+                        Text("${report.deleted.size} ancienne(s) annonce(s) supprimée(s) (republications) : non importées.")
+                        Text(
+                            "Les fiches existantes sont retrouvées par leur numéro d'annonce Vinted : pas de doublon, " +
+                                "rien de ce que tu as saisi n'est écrasé. Les ventes reçoivent leur vraie date et leur vrai montant.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    } else {
+                        Text("${report.candidates.size} article(s) reconnu(s) dans ${report.files.size} fichier(s).")
+                        report.candidates.take(5).forEach { Text("• ${it.title}" + (it.priceCents?.let { p -> " (${Money.formatEuros(p)})" } ?: "")) }
+                        Text(
+                            "Les articles déjà présents (même nom, même prix) ne seront pas dupliqués. " +
+                                "Le format de l'export n'est pas documenté par Vinted : si le résultat est faux, " +
+                                "copie la structure et transmets-la pour adapter l'import.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                     TextButton(onClick = { copyToClipboard(context, "Structure de l'export", report.structureText()) }) {
                         Text("Copier la structure (sans tes données)")
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = onConfirmExport, enabled = report.candidates.isNotEmpty()) { Text("Importer") }
+                TextButton(onClick = onConfirmExport, enabled = report.candidates.isNotEmpty() || report.isHtml) { Text("Importer") }
             },
             dismissButton = { TextButton(onClick = onDismissExport) { Text("Annuler") } },
         )
@@ -222,6 +241,35 @@ fun SettingsScreen(
                 Text("Télécharger le modèle")
             }
         }
+
+        SectionTitle("Mes données")
+        val exportScope = androidx.compose.runtime.rememberCoroutineScope()
+        var exporting by remember { mutableStateOf(false) }
+        OutlinedButton(
+            enabled = !exporting,
+            onClick = {
+                exporting = true
+                exportScope.launch {
+                    try {
+                        val export = context.container().dataExport
+                        val file = export.build(appVersion(context))
+                        context.startActivity(export.shareIntent(file))
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        onMessage("Export impossible.")
+                    } finally {
+                        exporting = false
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(if (exporting) "Préparation…" else "Exporter mes données (ZIP)") }
+        Text(
+            "Crée un fichier ZIP avec un rapport lisible (ventes par mois, stock, points à vérifier) et toutes tes " +
+                "fiches, ventes et achats, sans photos, sans pseudos d'acheteurs ni messages. Choisis ensuite où l'envoyer.",
+            style = MaterialTheme.typography.bodySmall,
+        )
 
         SectionTitle("À propos")
         Text(

@@ -42,4 +42,6 @@ class AppContainer(context: Context) {
         photoStore = photoStore,
         labelStore = labelStore,
     )
+
+    val dataExport = fr.vintedassistant.mobile.data.DataExport(context, database, articleRepository, purchaseRepository)
 }
