@@ -46,6 +46,9 @@ interface PhotoDao {
     @Query("SELECT * FROM article_photos WHERE article_id = :articleId ORDER BY position, id")
     suspend fun forArticle(articleId: Long): List<PhotoEntity>
 
+    @Query("SELECT COALESCE(MIN(position), 0) FROM article_photos WHERE article_id = :articleId")
+    suspend fun minPosition(articleId: Long): Int
+
     @Query("SELECT COALESCE(MAX(position), -1) FROM article_photos WHERE article_id = :articleId")
     suspend fun maxPosition(articleId: Long): Int
 

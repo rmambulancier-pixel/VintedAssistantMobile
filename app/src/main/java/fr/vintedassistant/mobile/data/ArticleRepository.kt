@@ -203,6 +203,19 @@ class ArticleRepository(
         return failures
     }
 
+    /**
+     * Version améliorée d'une photo (détourage, fond clair, lumière), ajoutée en première position.
+     * L'originale est conservée. Renvoie vrai si le bijou a pu être détouré.
+     */
+    suspend fun enhancePhoto(articleId: Long, fileName: String, enhancer: fr.vintedassistant.mobile.data.files.PhotoEnhancer): Boolean {
+        val store = photoStore ?: throw IllegalStateException("Photos indisponibles")
+        val bytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.file(fileName).readBytes() }
+        val result = enhancer.enhanceFile(bytes)
+        val name = store.importBytes(result.bytes)
+        photoDao.insert(PhotoEntity(articleId = articleId, fileName = name, position = photoDao.minPosition(articleId) - 1, createdAt = clock()))
+        return result.cutOut
+    }
+
     suspend fun removePhoto(articleId: Long, fileName: String) {
         val photo = photoDao.find(articleId, fileName) ?: return
         photoDao.deleteById(photo.id)

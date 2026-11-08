@@ -158,6 +158,7 @@ fun ArticleEditorScreen(articleId: Long, sessionKey: String, aiEnabled: Boolean,
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             PhotoThumb(name, size = 96.dp)
                             TextButton(onClick = { vm.removePhoto(name) }) { Text("Retirer") }
+                            TextButton(onClick = { vm.enhancePhoto(name) }, enabled = !busy) { Text("Améliorer") }
                         }
                     }
                 }

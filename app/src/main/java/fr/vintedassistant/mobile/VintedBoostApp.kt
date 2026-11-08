@@ -33,6 +33,7 @@ class AppContainer(context: Context) {
     val labelStore = LabelStore(context)
     val settingsStore = SettingsStore(context.getSharedPreferences(SettingsStore.PREFS_NAME, Context.MODE_PRIVATE))
     val assistant = ListingAssistant(context)
+    val photoEnhancer = fr.vintedassistant.mobile.data.files.PhotoEnhancer(context)
 
     val purchaseRepository = fr.vintedassistant.mobile.data.PurchaseRepository(database, photoStore)
 

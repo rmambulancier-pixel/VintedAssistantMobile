@@ -35,6 +35,7 @@ class EditorViewModel(
     private val assistant: ListingAssistant,
     private val photoStore: PhotoStore,
     private val settingsStore: SettingsStore,
+    private val photoEnhancer: fr.vintedassistant.mobile.data.files.PhotoEnhancer,
 ) : ViewModel() {
 
     private val articleId = MutableStateFlow(initialId)
@@ -117,6 +118,13 @@ class EditorViewModel(
                 else -> "${uris.size - failures} photo(s) ajoutée(s), $failures illisible(s)."
             }
         }
+    }
+
+    /** Ajoute une version améliorée de la photo (bijou détouré sur fond clair), en première position. */
+    fun enhancePhoto(fileName: String) = work("Amélioration impossible. Vérifie la connexion la première fois (téléchargement du détourage), puis réessaie.") {
+        val cut = repository.enhancePhoto(articleId.value, fileName, photoEnhancer)
+        _info.value = if (cut) "Photo améliorée ajoutée en première position. L'originale est gardée : retire celle que tu ne veux pas."
+            else "Bijou non détouré sur cette photo : seuls le cadrage et la lumière ont été améliorés. L'originale est gardée."
     }
 
     fun removePhoto(fileName: String) = work("Suppression de la photo impossible.") {
@@ -241,7 +249,7 @@ class EditorViewModel(
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as VintedBoostApp
                 val c = app.container
-                EditorViewModel(articleId, c.articleRepository, c.assistant, c.photoStore, c.settingsStore)
+                EditorViewModel(articleId, c.articleRepository, c.assistant, c.photoStore, c.settingsStore, c.photoEnhancer)
             }
         }
     }

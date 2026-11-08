@@ -229,6 +229,13 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   candidates par champ (`DetailsGuess`), la première qui existe dans le menu est cochée ; un champ déjà rempli
   n'est jamais modifié ; les manques sont affichés avec les options vues.
 
+- **0.13.2** : « Partir d'une fiche existante » : copie d'une fiche du même modèle (toutes couleurs, même vendue).
+- **0.14** : « Améliorer » une photo (`data/files/PhotoEnhancer`, `domain/PhotoLayout`) : détourage ML Kit Subject
+  Segmentation (gratuit, sur le téléphone, modèle via Google Play services téléchargé une fois), bijou centré
+  à 80 % sur un fond carré blanc cassé 1080 px, ombre douce, réglage de lumière plafonné (gain ≤ 1,3).
+  Le bijou n'est pas redessiné : vraie photo, arrière-plan seul remplacé. Version ajoutée en première
+  position, originale conservée. Pas de photo générée par IA (règles Vinted : photos du vrai objet).
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

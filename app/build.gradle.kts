@@ -12,8 +12,8 @@ android {
         applicationId = "fr.vintedassistant.mobile"
         minSdk = 26
         targetSdk = 36
-        versionCode = 25
-        versionName = "0.13.2"
+        versionCode = 26
+        versionName = "0.14.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     // Clé de débogage fixe, versionnée : chaque APK de test a la même signature et
@@ -62,6 +62,8 @@ dependencies {
 
     // IA sur le téléphone : Gemini Nano via ML Kit (gratuit, hors ligne). API en bêta.
     implementation("com.google.mlkit:genai-prompt:1.0.0-beta4")
+    // Détourage des photos sur le téléphone (gratuit ; modèle fourni par Google Play services).
+    implementation("com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
