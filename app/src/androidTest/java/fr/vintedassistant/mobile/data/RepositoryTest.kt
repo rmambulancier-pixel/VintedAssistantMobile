@@ -558,4 +558,31 @@ class RepositoryTest {
         assertEquals(8, java.time.Instant.ofEpochMilli(aout.orderedAt).atZone(java.time.ZoneId.systemDefault()).monthValue)
         assertTrue(corrections.plan(json).none { it.ok && it.label.contains("→") }) // tout est déjà fait
     }
+
+    @Test
+    fun saleNotificationRecordsTheSaleToShip() = runBlocking {
+        val id = repo.create(fields(price = 900).copy(title = "Collier Chaîne Tennis Strass Argenté 45cm 4mm Unisexe Iced Out"))
+        repo.markPublished(id)
+        val auto = repo.handleNotification("k1", now, "Vinted", "Collier Chaîne Tennis Strass Argenté 45cm… s'est vendu pour 7,50 €")
+        assertEquals(id, auto?.articleId)
+        assertEquals(750L, auto?.priceCents)
+        assertEquals(ArticleStatus.SOLD, repo.getArticle(id)!!.status)
+        val sale = repo.sales.first().single()
+        assertEquals(ShippingStatus.TO_SHIP, sale.shippingStatus)
+        assertEquals(750L, sale.salePriceCents)
+        assertTrue(repo.notices.first().single().handled)
+        // Même notification reçue deux fois : rien de plus.
+        assertNull(repo.handleNotification("k1", now, "Vinted", "Collier Chaîne Tennis Strass Argenté 45cm… s'est vendu pour 7,50 €"))
+        assertEquals(1, repo.sales.first().size)
+    }
+
+    @Test
+    fun dressingImportOfAnOnlineListingNowSoldCreatesASaleToShip() = runBlocking {
+        val url = "https://www.vinted.fr/items/555-collier"
+        val created = repo.upsertImported(ImportedListing(555, url, "Collier", 900), sold = false).articleId
+        repo.upsertImported(ImportedListing(555, url, "Collier", 900), sold = true)
+        val sale = repo.sales.first().single { it.articleId == created }
+        assertEquals(ShippingStatus.TO_SHIP, sale.shippingStatus)
+        assertTrue(sale.dateKnown)
+    }
 }

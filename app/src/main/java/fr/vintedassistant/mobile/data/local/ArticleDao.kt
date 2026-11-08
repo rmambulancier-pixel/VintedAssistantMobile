@@ -122,6 +122,9 @@ interface VintedNotificationDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(notification: VintedNotificationEntity): Long
 
+    @Query("UPDATE vinted_notifications SET handled = 1 WHERE notification_key = :key")
+    suspend fun markHandledByKey(key: String): Int
+
     @Query("UPDATE vinted_notifications SET handled = 1 WHERE id = :id")
     suspend fun markHandled(id: Long): Int
 

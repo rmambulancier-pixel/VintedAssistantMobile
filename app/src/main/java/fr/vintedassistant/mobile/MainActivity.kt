@@ -44,6 +44,11 @@ class MainActivity : ComponentActivity() {
             initialTab = Tab.REPUBLISH
             tabRequest++
         }
+        // Vente enregistrée depuis une notification Vinted : onglet Ventes.
+        if (intent.getStringExtra(RepublishReminder.EXTRA_OPEN_TAB) == RepublishReminder.TAB_SALES) {
+            initialTab = Tab.SALES
+            tabRequest++
+        }
         // « Partager » depuis l'application Vinted : on propose d'associer le lien à un article.
         if (intent.action == Intent.ACTION_SEND && intent.type?.startsWith("text/") == true) {
             sharedLink = intent.getStringExtra(Intent.EXTRA_TEXT)?.let { VintedLinks.extract(it) }

@@ -38,7 +38,7 @@ class VintedNotificationListener : NotificationListenerService() {
         val repository = (applicationContext as VintedBoostApp).container.articleRepository
         scope.launch {
             try {
-                repository.recordNotification(key, sbn.postTime, title, text)
+                repository.handleNotification(key, sbn.postTime, title, text)?.let { SaleNotifier.notify(applicationContext, it) }
             } catch (e: Exception) {
                 // Une notification perdue n'est pas grave ; on ne fait jamais planter le service.
             }

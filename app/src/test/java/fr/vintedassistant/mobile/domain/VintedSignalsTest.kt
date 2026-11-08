@@ -111,4 +111,27 @@ class VintedSignalsTest {
         assertEquals(1, stats.missingCostCount)
         assertEquals(1.0, stats.averageDaysToSell!!, 0.001)
     }
+
+    private fun art(id: Long, title: String, price: Long = 900, listed: Long = id) =
+        Article(id, title, 0, price, ArticleStatus.ONLINE, listed, firstPublishedAt = listed)
+
+    @Test
+    fun saleNotificationWithTruncatedTitleFindsTheOldestIdenticalListing() {
+        val a = listOf(
+            art(1, "Collier Chaîne Tennis Strass Argenté 45cm 4mm Unisexe Iced Out", listed = 300),
+            art(2, "Collier Chaîne Tennis Strass Argenté 45cm 4mm Unisexe Iced Out", listed = 100),
+            art(3, "Bracelet trèfle strass noir onyx argenté 17 cm"),
+        )
+        val text = "Vendu ! Collier Chaîne Tennis Strass Argenté 45cm… s'est vendu pour 7,50 €"
+        assertEquals(2L, VintedNotificationClassifier.soldArticle(text, a)?.id)
+        assertEquals(750L, VintedNotificationClassifier.plausiblePrice(text, 900))
+        assertEquals(null, VintedNotificationClassifier.plausiblePrice("Vendu pour 8,58 €", 750)) // total acheteur : écarté
+    }
+
+    @Test
+    fun ambiguousSaleNotificationIsNotGuessed() {
+        val a = listOf(art(1, "Bracelet trèfle strass noir onyx argenté 17 cm"), art(2, "Bracelet trèfle strass noir onyx doré 17 cm"))
+        assertEquals(null, VintedNotificationClassifier.soldArticle("Bracelet trèfle strass noir onyx… s'est vendu", a))
+        assertEquals(null, VintedNotificationClassifier.soldArticle("Ton article s'est vendu", a))
+    }
 }

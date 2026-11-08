@@ -236,6 +236,13 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   Le bijou n'est pas redessiné : vraie photo, arrière-plan seul remplacé. Version ajoutée en première
   position, originale conservée. Pas de photo générée par IA (règles Vinted : photos du vrai objet).
 
+- **0.15** : ventes enregistrées d'office. Notification Vinted de vente : fiche reconnue même au titre coupé
+  (début de 20 caractères au moins), plus ancienne des fiches identiques, aucune devinette si deux titres
+  différents se valent ; prix lu s'il est plausible (entre la moitié et le prix affiché), sinon prix affiché
+  signalé « à corriger » ; statut « À expédier » ; notification de confirmation ouvrant l'onglet Ventes.
+  Import du dressing : une fiche en vente dans l'application et vue vendue devient une vente datée du jour,
+  « À expédier », au prix affiché signalé à corriger (et non plus une vente sans date « Livrée »).
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

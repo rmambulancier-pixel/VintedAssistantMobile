@@ -359,7 +359,25 @@ class ArticleRepository(
         if (newPrice != existing.priceCents) {
             eventDao.insert(ListingEventEntity(articleId = existing.id, type = ListingEventEntity.PRICE_CHANGED, at = now, priceCents = newPrice))
         }
-        if (newStatus == ArticleStatus.SOLD) articleDao.getById(existing.id)?.let { ensureImportedSale(it) }
+        if (newStatus == ArticleStatus.SOLD) {
+            if (status.inStock && saleDao.forArticle(existing.id).isEmpty()) {
+                // Fiche encore en vente dans l'application, vendue sur Vinted : vente récente, colis à envoyer.
+                // Date du jour (au plus tôt) ; prix affiché, l'éventuelle offre acceptée n'étant pas visible ici.
+                val sold = articleDao.getById(existing.id)!!
+                saleDao.insert(
+                    SaleEntity(
+                        articleId = sold.id, title = sold.title, category = sold.category,
+                        salePriceCents = sold.priceCents, costCents = sold.costCents, feesCents = 0,
+                        soldAt = now, listedAt = sold.firstPublishedAt, buyer = "",
+                        shippingStatus = ShippingStatus.TO_SHIP.label, shippedAt = null, labelFile = null,
+                        notes = "Vue vendue à l'import du dressing : prix affiché, à corriger si une offre a été acceptée.",
+                        dateKnown = true,
+                    )
+                )
+            } else {
+                articleDao.getById(existing.id)?.let { ensureImportedSale(it) }
+            }
+        }
         UpsertResult(existing.id, created = false)
     }
 
@@ -625,6 +643,32 @@ class ArticleRepository(
     }
 
     /** Enregistre une notification Vinted reçue sur le téléphone. Renvoie false si elle était déjà connue. */
+    /** Vente enregistrée d'office à partir d'une notification Vinted. */
+    data class AutoSale(val articleId: Long, val title: String, val priceCents: Long, val priceFromNotice: Boolean)
+
+    /**
+     * Enregistre la notification puis, si c'est une vente dont la fiche est reconnue sans ambiguïté et encore
+     * en stock, enregistre la vente : statut « À expédier », prix lu dans la notification s'il est plausible
+     * (au plus le prix affiché, au moins la moitié), sinon le prix affiché, à vérifier.
+     */
+    suspend fun handleNotification(key: String, postedAt: Long, title: String, text: String): AutoSale? {
+        if (!recordNotification(key, postedAt, title, text)) return null
+        if (VintedNotificationClassifier.classify(title, text) != fr.vintedassistant.mobile.domain.VintedEventKind.SALE) return null
+        val content = "$title $text"
+        val article = VintedNotificationClassifier.soldArticle(content, getAllArticles().filter { it.status.inStock }) ?: return null
+        if (saleDao.forArticle(article.id).isNotEmpty()) return null
+        val read = VintedNotificationClassifier.plausiblePrice(content, article.priceCents)
+        val price = read ?: article.priceCents
+        val plausible = read != null
+        recordSale(article.id, SaleValidation.Valid(price, 0, ""))
+        saleDao.forArticle(article.id).lastOrNull()?.let { s ->
+            saleDao.update(s.copy(notes = if (plausible) "Enregistrée depuis la notification Vinted."
+                else "Enregistrée depuis la notification Vinted : prix affiché, à corriger si une offre a été acceptée."))
+        }
+        noticeDao.markHandledByKey(key)
+        return AutoSale(article.id, article.title, price, plausible)
+    }
+
     suspend fun recordNotification(key: String, postedAt: Long, title: String, text: String): Boolean {
         val articles = getAllArticles().filter { it.status != ArticleStatus.WITHDRAWN }
         val content = "$title $text"

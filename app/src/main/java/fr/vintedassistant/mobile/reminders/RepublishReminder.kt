@@ -33,6 +33,7 @@ object RepublishReminder {
     private const val NOTIFICATION_ID = 1001
     const val EXTRA_OPEN_TAB = "open_tab"
     const val TAB_REPUBLISH = "republish"
+    const val TAB_SALES = "sales"
 
     fun createChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

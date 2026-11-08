@@ -93,12 +93,47 @@ object VintedNotificationClassifier {
     }
 
     /** Article dont le nom apparaît dans la notification ; le nom le plus long l'emporte. */
-    fun matchArticle(text: String, articles: List<Article>): Article? {
-        val haystack = normalize(text)
-        return articles
-            .filter { it.title.length >= 4 && haystack.contains(normalize(it.title)) }
-            .maxByOrNull { it.title.length }
+    fun matchArticle(text: String, articles: List<Article>): Article? = matchArticles(text, articles).firstOrNull()
+
+    /**
+     * Fiches dont le nom apparaît dans la notification, la plus sûre d'abord. Vinted coupe souvent les titres
+     * longs (« Collier Chaîne Tennis Strass Argenté 45cm… ») : un début de titre d'au moins 20 caractères suffit.
+     */
+    fun matchArticles(text: String, articles: List<Article>): List<Article> = matchScored(text, articles).map { it.first }
+
+    /** Comme [matchArticles], avec le score (titre complet : 1000 + longueur ; début de titre : longueur retrouvée). */
+    fun matchScored(text: String, articles: List<Article>): List<Pair<Article, Int>> {
+        val haystack = normalize(text).replace("…", " ").replace("...", " ")
+        return articles.mapNotNull { a ->
+            val t = normalize(a.title)
+            when {
+                t.length >= 4 && haystack.contains(t) -> a to 1000 + t.length
+                t.length >= 20 -> {
+                    var n = t.length - 1
+                    while (n >= 20 && !haystack.contains(t.substring(0, n))) n--
+                    if (n >= 20) a to n else null
+                }
+                else -> null
+            }
+        }.sortedByDescending { it.second }
     }
+
+    /**
+     * Fiche vendue d'après une notification : la mieux reconnue. Plusieurs fiches au même titre (pièces
+     * identiques) : la plus anciennement en ligne. Deux titres différents reconnus aussi bien : on ne devine pas.
+     */
+    fun soldArticle(text: String, inStock: List<Article>): Article? {
+        val scored = matchScored(text, inStock)
+        val best = scored.firstOrNull() ?: return null
+        val key = normalize(best.first.title)
+        if (scored.any { it.second == best.second && normalize(it.first.title) != key }) return null
+        return scored.filter { normalize(it.first.title) == key }.map { it.first }
+            .minByOrNull { it.lastVisibleAt ?: it.createdAt }
+    }
+
+    /** Prix de vente lu dans la notification s'il est plausible (entre la moitié et le prix affiché), sinon null. */
+    fun plausiblePrice(text: String, listedCents: Long): Long? =
+        amountCents(text)?.takeIf { it in (listedCents + 1) / 2..listedCents }
 
     internal fun normalize(s: String): String =
         Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD)
