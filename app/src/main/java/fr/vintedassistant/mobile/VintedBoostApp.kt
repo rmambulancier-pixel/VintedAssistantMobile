@@ -18,6 +18,8 @@ class VintedBoostApp : Application() {
     override fun onCreate() {
         super.onCreate()
         RepublishReminder.createChannel(this)
+        fr.vintedassistant.mobile.reminders.ShippingReminder.schedule(this)
+        fr.vintedassistant.mobile.reminders.AutoBackup.schedule(this)
     }
 }
 
@@ -47,4 +49,11 @@ class AppContainer(context: Context) {
     val corrections = fr.vintedassistant.mobile.data.Corrections(articleRepository, purchaseRepository)
 
     val dataExport = fr.vintedassistant.mobile.data.DataExport(context, database, articleRepository, purchaseRepository)
+
+    val backup = fr.vintedassistant.mobile.data.Backup(
+        context = context,
+        db = database,
+        settingsPrefs = context.getSharedPreferences(SettingsStore.PREFS_NAME, Context.MODE_PRIVATE),
+        closeDatabase = { database.close() },
+    )
 }

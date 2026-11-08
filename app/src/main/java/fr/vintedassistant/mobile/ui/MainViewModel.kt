@@ -80,6 +80,12 @@ class MainViewModel(
         combine(purchases.orders, repository.articles) { o, a -> StockLedger.build(o, a) }
             .flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /** Points à vérifier (doublons, fiches sans lien, ventes sans achat…), affichés sur l'accueil. */
+    val findings: StateFlow<List<fr.vintedassistant.mobile.domain.DataAudit.Finding>> =
+        combine(repository.articles, repository.sales, stock) { a, s, st ->
+            fr.vintedassistant.mobile.domain.DataAudit.findings(a, s, st)
+        }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val republishPlan: StateFlow<RepublishPlan?> =
         combine(repository.articles, repository.republishedTimestamps, settingsStore.settings, clock) { a, t, st, now ->
             RepublishPlanner.plan(a, t, st.republish, now)

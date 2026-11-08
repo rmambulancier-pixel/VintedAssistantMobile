@@ -111,8 +111,9 @@ fun RepublishScreen(
         } else {
             item {
                 Text(
-                    "Articles en ligne depuis plus de ${daysLabel(settings.stagnantDays)} : baisse de ${settings.priceDropPercent} %, " +
-                        "jamais sous ton prix plancher. Applique ici, puis modifie le prix dans Vinted.",
+                    "Articles en ligne depuis plus de ${daysLabel(settings.stagnantDays)}. Prix conseillé : celui auquel tes modèles " +
+                        "proches se sont vendus s'il est plus bas, sinon une baisse de ${settings.priceDropPercent} %, jamais sous ton prix plancher. " +
+                        "Applique ici, puis modifie le prix dans Vinted, ou republie l'annonce à ce prix.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -122,6 +123,12 @@ fun RepublishScreen(
                         Text("→ ${Money.formatEuros(s.suggestedPriceCents!!)}")
                     }
                 }) { onOpenArticle(s.article.id) }
+                s.marketPriceCents?.let {
+                    Text(
+                        "Modèles proches vendus ${Money.formatEuros(it)} (prix médian, ${s.marketSales} ventes).",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         }
         item { Text(" ", Modifier.padding(bottom = 24.dp)) }

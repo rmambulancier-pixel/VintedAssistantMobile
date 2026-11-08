@@ -100,6 +100,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
     val notices by vm.notices.collectAsStateWithLifecycle()
     val exportReport by vm.exportReport.collectAsStateWithLifecycle()
     val stock by vm.stock.collectAsStateWithLifecycle()
+    val findings by vm.findings.collectAsStateWithLifecycle()
     // Fiche créée par « Remettre en vente » : que faire ensuite ?
     var created by rememberSaveable { mutableStateOf<Long?>(null) }
 
@@ -282,6 +283,10 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                     onDismissMessage = vm::dismissMessage,
                     modifier = modifier,
                     onOpenArticle = ::openEditor,
+                    findings = findings,
+                    sales = sales.orEmpty(),
+                    onOpenSales = { tabIndex = Tab.SALES.ordinal },
+                    onOpenRepublish = { tabIndex = Tab.REPUBLISH.ordinal },
                 )
                 Tab.STOCK -> StockScreen(
                     articles = articles,

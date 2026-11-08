@@ -585,4 +585,39 @@ class RepositoryTest {
         assertEquals(ShippingStatus.TO_SHIP, sale.shippingStatus)
         assertTrue(sale.dateKnown)
     }
+
+    @Test
+    fun fullBackupContainsDatabaseAndIsAcceptedForRestore() = runBlocking {
+        val id = repo.create(fields())
+        repo.recordSale(id, SaleValidation.Valid(2000, 0, ""))
+        val prefs = context.getSharedPreferences("settings-test-${UUID.randomUUID()}", Context.MODE_PRIVATE)
+        prefs.edit().putInt("contribution_rate_bp", 1230).putBoolean("reminder_enabled", true).commit()
+        val backup = Backup(context, db, prefs, closeDatabase = {})
+        val out = java.io.ByteArrayOutputStream()
+        val written = backup.writeTo(out, "test")
+        assertEquals(1, written.articles)
+        assertEquals(1, written.sales)
+        val info = backup.prepare(java.io.ByteArrayInputStream(out.toByteArray()))
+        assertEquals(1, info.articles)
+        assertEquals(1, info.sales)
+        assertEquals(VintedBoostDatabase.VERSION, info.schema)
+        backup.discardPrepared()
+        // Réglages : aller-retour fidèle.
+        val json = Backup.prefsToJson(prefs)
+        prefs.edit().clear().commit()
+        Backup.jsonToPrefs(json, prefs)
+        assertEquals(1230, prefs.getInt("contribution_rate_bp", 0))
+        assertTrue(prefs.getBoolean("reminder_enabled", false))
+    }
+
+    @Test
+    fun foreignZipIsRefusedForRestore() = runBlocking {
+        val out = java.io.ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(out).use { z ->
+            z.putNextEntry(java.util.zip.ZipEntry("donnees.json")); z.write("{}".toByteArray()); z.closeEntry()
+        }
+        val backup = Backup(context, db, context.getSharedPreferences("x", Context.MODE_PRIVATE), closeDatabase = {})
+        val refused = try { backup.prepare(java.io.ByteArrayInputStream(out.toByteArray())); false } catch (e: IllegalArgumentException) { true }
+        assertTrue(refused)
+    }
 }

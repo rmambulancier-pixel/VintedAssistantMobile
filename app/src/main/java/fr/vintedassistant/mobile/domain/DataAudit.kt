@@ -40,6 +40,13 @@ object DataAudit {
         if (noCost.isNotEmpty()) {
             out += Finding("Fiches sans coût d'achat (marges surestimées)", noCost.map { "#${it.id} « ${it.title.take(60)} » (${it.status.label})" })
         }
+        if (stock != null && stock.bought > 0) {
+            val byId = articles.associateBy { it.id }
+            val orphan = sales.filter { it.counted && it.articleId != null && byId[it.articleId]?.purchaseItemId == null }
+            if (orphan.isNotEmpty()) {
+                out += Finding("Ventes sans achat rattaché (coût d'achat à vérifier)", orphan.map { "fiche #${it.articleId} « ${it.title.take(60)} » ${Money.formatEuros(it.salePriceCents)}" })
+            }
+        }
         stock?.products?.filter { it.overLinked }?.takeIf { it.isNotEmpty() }?.let { list ->
             out += Finding("Achats avec plus de fiches que de pièces", list.map { "« ${it.name.take(60)} » : ${it.articles.size} fiches pour ${it.bought} pièce(s)" })
         }

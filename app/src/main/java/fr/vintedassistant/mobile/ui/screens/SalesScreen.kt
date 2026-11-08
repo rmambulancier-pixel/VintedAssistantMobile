@@ -37,6 +37,9 @@ import fr.vintedassistant.mobile.domain.Finance
 import fr.vintedassistant.mobile.domain.Money
 import fr.vintedassistant.mobile.domain.Sale
 import fr.vintedassistant.mobile.domain.ShippingStatus
+import fr.vintedassistant.mobile.domain.ShippingDeadline
+import androidx.compose.material3.Button
+import java.time.format.DateTimeFormatter
 import fr.vintedassistant.mobile.ui.container
 import fr.vintedassistant.mobile.ui.openFile
 import fr.vintedassistant.mobile.ui.shareFiles
@@ -67,7 +70,9 @@ fun SalesScreen(
             item { CircularProgressIndicator(Modifier.padding(16.dp)) }
             return@LazyColumn
         }
+        val now = System.currentTimeMillis()
         val toShip = sales.filter { it.shippingStatus == ShippingStatus.TO_SHIP }
+            .sortedBy { ShippingDeadline.due(it, now)?.lastDay?.toEpochDay() ?: Long.MAX_VALUE }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {
                 item { FilterChip(selected = !onlyToShip, onClick = { onlyToShip = false }, label = { Text("Toutes (${sales.size})") }) }
@@ -107,6 +112,7 @@ fun SalesScreen(
                 sale = sale,
                 netCents = Finance.netCents(sale, contributionRateBp),
                 date = if (sale.dateKnown) dateFormat.format(Date(sale.soldAt)) else "Date inconnue (import Vinted)",
+                due = ShippingDeadline.due(sale, now),
                 onStatus = { onStatus(sale.id, it) },
                 onAddLabel = {
                     labelForSale = sale.id
@@ -127,6 +133,7 @@ private fun SaleCard(
     sale: Sale,
     netCents: Long,
     date: String,
+    due: ShippingDeadline.Due?,
     onStatus: (ShippingStatus) -> Unit,
     onAddLabel: () -> Unit,
     onOpenLabel: () -> Unit,
@@ -144,6 +151,21 @@ private fun SaleCard(
                 color = if (!sale.counted) MaterialTheme.colorScheme.outline
                 else if (netCents >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
             )
+            due?.let { d ->
+                val day = d.lastDay.format(DUE_FORMAT)
+                Text(
+                    when {
+                        d.late -> "Délai Vinted dépassé (dernier jour : $day). Dépose vite le colis ou préviens l'acheteur."
+                        d.workingDaysLeft == 1 -> "À déposer au plus tard le $day, dernier jour."
+                        else -> "À déposer au plus tard le $day (${d.workingDaysLeft} jours ouvrés)."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (d.urgent) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (sale.shippingStatus == ShippingStatus.TO_SHIP) {
+                Button(onClick = { onStatus(ShippingStatus.SHIPPED) }, modifier = Modifier.fillMaxWidth()) { Text("Colis déposé : expédiée") }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box {
                     OutlinedButton(onClick = { menu = true }) { Text(sale.shippingStatus.label) }
@@ -163,3 +185,5 @@ private fun SaleCard(
         }
     }
 }
+
+private val DUE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.FRANCE)

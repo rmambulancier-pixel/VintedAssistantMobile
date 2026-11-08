@@ -22,6 +22,20 @@ import fr.vintedassistant.mobile.ui.SectionTitle
 import fr.vintedassistant.mobile.ui.StatRow
 import fr.vintedassistant.mobile.ui.daysLabel
 import java.util.Locale
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import fr.vintedassistant.mobile.domain.DataAudit
+import fr.vintedassistant.mobile.domain.Sale
+import fr.vintedassistant.mobile.domain.ShippingDeadline
+import fr.vintedassistant.mobile.reminders.ShippingReminder
+
+private val FICHE_ID = Regex("#(\\d+)")
 
 @Composable
 fun DashboardScreen(
@@ -31,12 +45,59 @@ fun DashboardScreen(
     onDismissMessage: () -> Unit,
     modifier: Modifier,
     onOpenArticle: (Long) -> Unit,
+    findings: List<DataAudit.Finding> = emptyList(),
+    sales: List<Sale> = emptyList(),
+    onOpenSales: () -> Unit = {},
+    onOpenRepublish: () -> Unit = {},
 ) {
+    var openFinding by remember { mutableStateOf<String?>(null) }
+    val now = System.currentTimeMillis()
+    val dues = sales.mapNotNull { ShippingDeadline.due(it, now) }
+    val urgent = dues.count { it.urgent }
     LazyColumn(modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         message?.let { item { MessageCard(it, onDismissMessage) } }
         if (stats == null) {
             item { CircularProgressIndicator(Modifier.padding(16.dp)) }
             return@LazyColumn
+        }
+        if (urgent > 0) {
+            item {
+                Card(
+                    onClick = onOpenSales,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        ShippingReminder.message(urgent, dues.count { it.late }) ?: "",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(12.dp),
+                    )
+                }
+            }
+        }
+        val actionable = findings.filterNot { it.title.startsWith("Ventes sans date") }
+        if (actionable.isNotEmpty()) {
+            item { SectionTitle("À vérifier (${actionable.sumOf { it.lines.size }})") }
+            items(actionable, key = { "finding-${it.title}" }) { f ->
+                ElevatedCard(onClick = { openFinding = if (openFinding == f.title) null else f.title }, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("${f.title} : ${f.lines.size}", style = MaterialTheme.typography.titleSmall)
+                        if (openFinding == f.title) {
+                            f.lines.take(30).forEach { line ->
+                                val id = FICHE_ID.find(line)?.groupValues?.get(1)?.toLongOrNull()
+                                if (id != null) {
+                                    TextButton(onClick = { onOpenArticle(id) }) { Text(line, style = MaterialTheme.typography.bodySmall) }
+                                } else {
+                                    Text(line, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                            if (f.lines.size > 30) Text("… et ${f.lines.size - 30} autre(s).", style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            Text("Appuie pour voir le détail.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                        }
+                    }
+                }
+            }
         }
         item { SectionTitle("Ce mois-ci") }
         item {
@@ -100,7 +161,7 @@ fun DashboardScreen(
             )
         }
 
-        item { SectionTitle("Articles qui stagnent") }
+        item { SectionTitle("Articles qui stagnent (${stats.stagnant.size})") }
         if (stats.stagnant.isEmpty()) {
             item { Text("Aucun article en ligne depuis trop longtemps.", style = MaterialTheme.typography.bodySmall) }
         } else {
@@ -113,6 +174,17 @@ fun DashboardScreen(
                         }
                     }
                 }) { onOpenArticle(s.article.id) }
+                s.marketPriceCents?.let {
+                    Text(
+                        "Modèles proches vendus ${Money.formatEuros(it)} (prix médian, ${s.marketSales} ventes).",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            item {
+                OutlinedButton(onClick = onOpenRepublish, modifier = Modifier.fillMaxWidth()) {
+                    Text("Republier ou baisser les prix")
+                }
             }
         }
 

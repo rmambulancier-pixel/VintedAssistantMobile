@@ -271,6 +271,8 @@ fun SettingsScreen(
             style = MaterialTheme.typography.bodySmall,
         )
 
+        BackupSection(onMessage)
+
         SectionTitle("À propos")
         Text(
             "Vinted Assistant ${appVersion(context)}. Toutes les données restent sur ce téléphone. " +

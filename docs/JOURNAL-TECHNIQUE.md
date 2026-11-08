@@ -243,9 +243,28 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   Import du dressing : une fiche en vente dans l'application et vue vendue devient une vente datée du jour,
   « À expédier », au prix affiché signalé à corriger (et non plus une vente sans date « Livrée »).
 
+- **0.15.1** : catégorie déduite du titre (`domain/JewelryCategory`) pour les fiches et ventes importées sans catégorie.
+
+- **0.16** : fiabilité et suivi au quotidien.
+  - Sauvegarde complète (`data/Backup`) : base copiée par `VACUUM INTO` (instantané cohérent, Android 11+),
+    photos, bordereaux, réglages, dans un ZIP avec `manifest.json`. Automatique chaque semaine (WorkManager,
+    batterie et stockage suffisants, rien si l'application est vide) dans Téléchargements/VintedAssistant
+    via MediaStore, sans permission ; les 4 plus récentes gardées. Envoi à la demande (Drive, e-mail).
+  - Restauration : lecture dans le cache, contrôle du format, d'`integrity_check` et de la version du schéma
+    (refus d'une sauvegarde plus récente que l'application ; plus ancienne : migrations Room habituelles),
+    protection contre les chemins hors dossier, copie de sécurité de l'état actuel, fichiers puis base
+    (renommage), redémarrage.
+  - Délai d'expédition (`domain/Shipping`) : 5 jours ouvrés après la vente (aide Vinted), week-ends et jours
+    fériés français exclus (Pâques par l'algorithme de Meeus). Date limite sur chaque vente « À expédier »,
+    bouton « Colis déposé », encart sur l'accueil, notification vers 9 h si un colis doit partir aujourd'hui
+    ou au prochain jour ouvré. Les ventes sans date connue n'ont pas de délai.
+  - Prix conseillé des articles qui stagnent : prix médian des ventes de modèles proches (même type de bijou,
+    60 % de mots communs, deux ventes au moins) s'il est plus bas, sinon la baisse en pourcentage ; plancher respecté.
+  - Accueil : « À vérifier » (contrôles de `DataAudit`, dont les ventes sans achat rattaché), fiches ouvrables.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des
   exemples réels transmis par l'utilisateur.
-- Sauvegarde et restauration (export chiffré données + photos).
+- Chiffrement optionnel des sauvegardes (mot de passe), si elles sont envoyées hors du téléphone.
 - Mise à jour des versions (AGP, Kotlin, Compose) dans un commit séparé, une fois l'usage validé.
