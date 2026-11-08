@@ -39,7 +39,8 @@ jobs:
       - name: Build debug APK and run unit tests
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon assembleDebug testDebugUnitTest
+          # Nouvelles tentatives si un téléchargement (Gradle, dépendances) échoue côté serveur.
+          for i in 1 2 3; do ./gradlew --no-daemon assembleDebug testDebugUnitTest && exit 0; echo "Tentative $i échouée, nouvelle tentative dans 60 s"; sleep 60; done; exit 1
 
       # Le schéma Room doit être versionné dans le dépôt : on l'affiche pour pouvoir le vérifier.
       - name: Show Room schema
@@ -94,7 +95,7 @@ jobs:
           target: google_apis
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: chmod +x ./gradlew && ./gradlew --no-daemon connectedDebugAndroidTest
+          script: chmod +x ./gradlew && (./gradlew --no-daemon connectedDebugAndroidTest || (sleep 60 && ./gradlew --no-daemon connectedDebugAndroidTest))
 
       - name: Upload instrumented test report
         if: always()
