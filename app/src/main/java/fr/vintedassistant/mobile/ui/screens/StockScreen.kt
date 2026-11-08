@@ -96,6 +96,7 @@ fun StockScreen(
     var query by rememberSaveable { mutableStateOf("") }
     var linkProduct by remember { mutableStateOf<StockProduct?>(null) }
     var linkArticle by remember { mutableStateOf<Article?>(null) }
+    var copyFor by remember { mutableStateOf<StockProduct?>(null) }
     var blindRelaunch by remember { mutableStateOf<Article?>(null) }
     val dateFormat = remember { DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.FRANCE) }
 
@@ -105,6 +106,15 @@ fun StockScreen(
             candidates = stock?.unlinked.orEmpty(),
             onDismiss = { linkProduct = null },
             onPick = { a -> linkProduct = null; product.nextLot?.let { actions.link(a, it) } },
+        )
+    }
+    copyFor?.let { product ->
+        TemplatePickerDialog(
+            product = product,
+            articles = articles.orEmpty(),
+            stock = stock,
+            onDismiss = { copyFor = null },
+            onPick = { a -> copyFor = null; product.nextLot?.let { actions.relaunch(a.id, it.itemId) } },
         )
     }
     linkArticle?.let { article ->
@@ -191,6 +201,7 @@ fun StockScreen(
                     onRelaunch = { t -> actions.relaunch(t.id, product.nextLot?.itemId) },
                     onDraft = { product.nextLot?.let { actions.draftFromPurchase(it.itemId) } },
                     onLink = { linkProduct = product },
+                    onCopyFrom = { copyFor = product },
                     onOpen = actions.openArticle,
                     onReceived = actions.markReceived,
                 )
@@ -299,6 +310,7 @@ private fun ProductCard(
     onRelaunch: (Article) -> Unit,
     onDraft: () -> Unit,
     onLink: () -> Unit,
+    onCopyFrom: () -> Unit,
     onOpen: (Long) -> Unit,
     onReceived: (Long) -> Unit,
 ) {
@@ -384,9 +396,13 @@ private fun ProductCard(
                     TextButton(onClick = onDraft) { Text("Fiche vierge") }
                     TextButton(onClick = onLink) { Text("Rattacher une fiche") }
                 }
+                TextButton(onClick = onCopyFrom) { Text("Partir d'une fiche existante") }
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Button(onClick = onDraft) { Text("Créer la fiche") }
+                    Button(onClick = onCopyFrom) { Text("Partir d'une fiche existante") }
+                }
+                Row {
+                    TextButton(onClick = onDraft) { Text("Fiche vierge") }
                     TextButton(onClick = onLink) { Text("Rattacher une fiche") }
                 }
             }
@@ -579,4 +595,39 @@ private fun variantFirst(name: String): String {
     val m = Regex("""^(.*?)\s*\(([^()]*(?:\([^()]*\))?[^()]*)\)\s*$""").find(name) ?: return name
     val variant = m.groupValues[2].trim()
     return if (variant.isEmpty()) name else "[$variant] ${m.groupValues[1].trim()}"
+}
+
+/** Nom fournisseur sans la variante finale : « Bracelet Cœur … (Argent + bleu) » → « Bracelet Cœur … ». */
+private fun baseName(name: String): String =
+    StockLedger.normalize(name.replace(Regex("""\s*\(([^()]*(?:\([^()]*\))?[^()]*)\)\s*$"""), ""))
+
+/**
+ * Fiche modèle pour une nouvelle annonce : d'abord les fiches du même modèle fournisseur (toutes couleurs,
+ * même vendues), puis les plus ressemblantes. La copie reprend texte, prix et photos ; on adapte ensuite la couleur.
+ */
+@Composable
+private fun TemplatePickerDialog(
+    product: StockProduct,
+    articles: List<Article>,
+    stock: StockOverview?,
+    onDismiss: () -> Unit,
+    onPick: (Article) -> Unit,
+) {
+    val sorted = remember(product, articles, stock) {
+        val base = baseName(product.name)
+        val family = stock?.products.orEmpty().filter { baseName(it.name) == base }.flatMap { it.articles }.map { it.id }.toSet()
+        articles.filter { it.status != ArticleStatus.WITHDRAWN }
+            .sortedWith(compareByDescending<Article> { it.id in family }.thenByDescending { StockLedger.similarity(it.title, product.name) })
+    }
+    PickerDialog(
+        title = "Partir de quelle fiche ?",
+        header = "${product.name}\nLa copie reprend texte, prix et photos ; change ensuite la couleur si besoin.",
+        headerImage = product.imageFile,
+        empty = "Aucune fiche à copier.",
+        entries = sorted.map { a ->
+            Triple(a.photos.firstOrNull(), a.title, listOf(a.status.label, a.color.ifBlank { null }, Money.formatEuros(a.priceCents)).filterNotNull().joinToString(" • "))
+        },
+        onDismiss = onDismiss,
+        onPick = { i -> onPick(sorted[i]) },
+    )
 }
