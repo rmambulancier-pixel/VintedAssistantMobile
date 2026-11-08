@@ -203,7 +203,7 @@ fun VintedWebScreen(
                                 web.evalJs(VintedPageScripts.openPhotoPicker)
                                 delay(1500)
                             }
-                            val filled = VintedPageScripts.fillSummary(web.evalJs(VintedPageScripts.fill(a.title, full, Money.formatPlain(a.priceCents))))
+                            val filled = VintedPageScripts.fillSummary(web.evalJs(VintedPageScripts.fill(a.title, full, Money.formatPlain(a.priceCents).replace(',', '.'))))
                             status = "$filled Catégorie en cours…"
                             val c = CategoryGuess.of(a)
                             web.evalJs(VintedPageScripts.categoryStart(c.query, c.leaves, c.gender, c.avoid))
@@ -228,7 +228,18 @@ fun VintedWebScreen(
                                 val json = web.evalJs(VintedPageScripts.detailsResult)?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
                                 if (json != null && json.optBoolean("done")) { details = json; break }
                             }
-                            status = DetailsGuess.summary(details)
+                            // Prix en dernier : point décimal d'abord (« 9.50 »), virgule si Vinted ne le comprend pas.
+                            val cents = a.priceCents
+                            val dot = (cents / 100).toString() + (if (cents % 100 == 0L) "" else "." + (cents % 100).toString().padStart(2, '0'))
+                            var priceOk = false
+                            for (v in listOf(dot, dot.replace('.', ','))) {
+                                web.evalJs(VintedPageScripts.setPrice(v))
+                                delay(600)
+                                val shown = web.evalJs(VintedPageScripts.readPrice).orEmpty()
+                                if (shown.any { it.isDigit() } && !shown.contains("NaN", ignoreCase = true)) { priceOk = true; break }
+                            }
+                            web.evalJs(VintedPageScripts.packageSmall)
+                            status = DetailsGuess.summary(details) + (if (priceOk) "" else " Prix à saisir à la main.")
                             if (details == null || DetailsGuess.hasGaps(details)) details?.let { diagnostic = it.toString(2) }
                         }
                     },

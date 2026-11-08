@@ -61,9 +61,9 @@ object DetailsGuess {
         for (i in 0 until f.length()) {
             val o = f.getJSONObject(i)
             when (o.optString("status")) {
-                "rempli", "déjà rempli" -> done += o.optString("name")
+                "rempli", "déjà rempli" -> done += o.optString("field")
                 "absent" -> Unit
-                else -> todo += o.optString("name")
+                else -> todo += o.optString("field")
             }
         }
         return buildString {

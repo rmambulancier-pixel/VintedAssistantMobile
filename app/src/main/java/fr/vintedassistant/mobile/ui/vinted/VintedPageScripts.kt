@@ -158,6 +158,36 @@ object VintedPageScripts {
         })($fields);
     """.trimIndent()
 
+    /** Saisit le prix (champ `#price`) et renvoie ce que Vinted affiche ensuite, pour vérifier qu'il l'a compris. */
+    fun setPrice(value: String): String {
+        val v = JSONObject.quote(value)
+        return """
+        (function(v){
+          const e=document.getElementById('price')||document.querySelector('[data-testid="price-input--input"]');
+          if(!e)return 'absent';
+          e.focus();
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,v);
+          e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));
+          e.blur();e.dispatchEvent(new Event('blur',{bubbles:true}));
+          return 'ok';
+        })($v);
+        """.trimIndent()
+    }
+
+    val readPrice: String = "(function(){const e=document.getElementById('price');return e?e.value:'absent';})();"
+
+    /** Taille du colis : « Petit » (recommandé pour un bijou) si aucune taille n'est cochée. */
+    val packageSmall: String = """
+        (function(){
+          const radios=Array.from(document.querySelectorAll('input[type="radio"][id^="package_type_selector_"]'));
+          if(!radios.length)return 'absent';
+          if(radios.some(r=>r.checked))return 'déjà choisi';
+          const cell=document.querySelector('[data-testid="1-package-size--cell"]')||document.getElementById('package_type_selector_1');
+          if(cell){cell.click();return 'petit';}
+          return 'absent';
+        })();
+    """.trimIndent()
+
     val detailsResult: String = "(function(){return JSON.stringify(window.__vbDrop||null);})();"
 
     /** Ouvre l'ajout de photos de Vinted : le sélecteur reçoit directement les photos préparées par l'application. */
