@@ -223,6 +223,12 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   d'affichage de la boîte des catégories (opacité et visibilité forcées). Le bouton « Ajouter » reste à
   toucher par l'utilisateur.
 
+- **0.13** : publication assistée, étape 2. « Remplir » ajoute les photos (ouverture du sélecteur Vinted,
+  servi directement par l'application ; sauté si des photos sont déjà là), puis, après la catégorie, les
+  détails relevés le 8 novembre : « Pour qui ? », Marque, État, Couleur (2 au plus), Matériau. Valeurs
+  candidates par champ (`DetailsGuess`), la première qui existe dans le menu est cochée ; un champ déjà rempli
+  n'est jamais modifié ; les manques sont affichés avec les options vues.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

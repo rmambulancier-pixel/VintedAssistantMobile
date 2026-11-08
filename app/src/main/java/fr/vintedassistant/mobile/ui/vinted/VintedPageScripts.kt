@@ -98,6 +98,80 @@ object VintedPageScripts {
         """.trimIndent()
     }
 
+    /**
+     * Détails apparus après la catégorie (« Pour qui ? », Marque, État, Couleur, Matériau) : chaque champ est
+     * un menu `input-dropdown` qui ouvre une boîte `.ReactModal__Content`. Pour chaque champ vide, on ouvre le menu,
+     * on tape la valeur si une recherche existe, on coche la première valeur candidate trouvée (jusqu'à [max]),
+     * puis « Fait ». Un champ déjà rempli n'est pas touché. Résultat dans `window.__vbDrop`, lu par [detailsResult].
+     */
+    fun detailsStart(fields: org.json.JSONArray): String = """
+        (function(fields){
+          const R={done:false,fields:[]};window.__vbDrop=R;
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const norm=s=>(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+          function setVal(e,v){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,v);
+            e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}
+          const dialog=()=>document.querySelector('.ReactModal__Content');
+          const saveBtn=()=>document.querySelector('[data-testid="input-dropdown-save-button"]')||
+            Array.from((dialog()||document).querySelectorAll('button')).find(b=>/^(fait|valider|ok)$/i.test((b.innerText||'').trim()));
+          const canSave=b=>b&&!b.disabled&&!/disabled/.test(b.className);
+          const closeBtn=()=>{const d=dialog();return d&&d.querySelector('.web_ui__Navigation__right button, [data-testid$="close-button"]');};
+          function fieldInput(re){
+            const lab=Array.from(document.querySelectorAll('label[class*="input-dropdown__title"]')).find(l=>re.test(norm(l.textContent)));
+            const box=lab&&lab.parentElement&&lab.parentElement.closest('[class*="input-dropdown"]');
+            return box&&box.querySelector('input');
+          }
+          const options=()=>{const d=dialog();if(!d)return [];
+            return Array.from(d.querySelectorAll('.web_ui__Cell__clickable, [role="option"], [role="radio"], [role="checkbox"], label'))
+              .filter(e=>!e.querySelector('.web_ui__Cell__clickable'))
+              .map(e=>({e,t:norm(e.innerText||e.textContent)})).filter(x=>x.t&&x.t.length<160);};
+          (async()=>{
+            try{
+              for(const f of fields){
+                const out={field:f.name,status:'',picked:[],seen:[]};R.fields.push(out);
+                const inp=fieldInput(new RegExp(f.label));
+                if(!inp){out.status='absent';continue;}
+                if((inp.value||'').trim()){out.status='déjà rempli';out.picked=[inp.value];continue;}
+                inp.focus();inp.click();
+                for(let i=0;i<20&&!dialog();i++)await sleep(150);
+                if(!dialog()){out.status='menu non ouvert';continue;}
+                await sleep(400);
+                const search=dialog().querySelector('input');
+                for(const v of f.values){
+                  if(out.picked.length>=f.max)break;
+                  if(search&&f.search){search.focus();setVal(search,v);await sleep(1000);}
+                  const nv=norm(v);
+                  const list=options();
+                  out.seen=list.slice(0,25).map(x=>x.t);
+                  const hit=list.find(x=>x.t===nv)||list.find(x=>x.t.startsWith(nv+' ')||x.t.startsWith(nv))||(f.loose?list.find(x=>x.t.includes(nv)):null);
+                  if(hit&&!out.picked.includes(hit.t)){hit.e.click();out.picked.push(hit.t);await sleep(500);}
+                }
+                const b=saveBtn();
+                if(out.picked.length&&canSave(b)){b.click();await sleep(600);}
+                if(dialog()){const c=closeBtn();if(c){c.click();await sleep(400);}}
+                out.status=(inp.value||'').trim()?'rempli':(out.picked.length?'choisi, à vérifier':'non trouvé');
+                if((inp.value||'').trim())out.picked=[inp.value];
+              }
+            }catch(e){R.error=String(e);}finally{R.done=true;}
+          })();
+          return 'started';
+        })($fields);
+    """.trimIndent()
+
+    val detailsResult: String = "(function(){return JSON.stringify(window.__vbDrop||null);})();"
+
+    /** Ouvre l'ajout de photos de Vinted : le sélecteur reçoit directement les photos préparées par l'application. */
+    val openPhotoPicker: String = """
+        (function(){
+          const b=Array.from(document.querySelectorAll('button')).find(x=>/ajoute des photos|ajouter des photos|t[ée]l[ée]charge/i.test(x.innerText||''));
+          const i=document.querySelector('input[type="file"]');
+          if(document.querySelector('[class*="media-select__grid"] img'))return 'already';
+          if(b){b.click();return 'button';}
+          if(i){i.click();return 'input';}
+          return 'none';
+        })();
+    """.trimIndent()
+
     val categoryResult: String = "(function(){return JSON.stringify(window.__vbCat||null);})();"
 
     /**

@@ -195,6 +195,14 @@ fun VintedWebScreen(
                         val web = session.webView ?: return@Button
                         scope.launch {
                             web.evaluateJavascript(VintedPageScripts.dialogFix, null)
+                            // Photos : le sélecteur de Vinted reçoit directement celles de la fiche.
+                            if (a.photos.isNotEmpty()) {
+                                val store = context.container().photoStore
+                                session.pendingPhotos = a.photos.map { store.shareUri(it) }
+                                photosReady = a.photos.size
+                                web.evalJs(VintedPageScripts.openPhotoPicker)
+                                delay(1500)
+                            }
                             val filled = VintedPageScripts.fillSummary(web.evalJs(VintedPageScripts.fill(a.title, full, Money.formatPlain(a.priceCents))))
                             status = "$filled Catégorie en cours…"
                             val c = CategoryGuess.of(a)
@@ -207,7 +215,21 @@ fun VintedWebScreen(
                                 if (json != null && json.optBoolean("done")) { result = json; break }
                             }
                             status = filled + " " + CategoryGuess.summary(result)
-                            if (result != null && !result.optBoolean("ok")) diagnostic = result.toString(2)
+                            if (result == null || !result.optBoolean("ok")) {
+                                if (result != null) diagnostic = result.toString(2)
+                                return@launch
+                            }
+                            // Détails apparus avec la catégorie : pour qui, marque, état, couleur, matériau.
+                            delay(800)
+                            web.evalJs(VintedPageScripts.detailsStart(DetailsGuess.fields(a)))
+                            var details: org.json.JSONObject? = null
+                            for (i in 0 until 120) {
+                                delay(300)
+                                val json = web.evalJs(VintedPageScripts.detailsResult)?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
+                                if (json != null && json.optBoolean("done")) { details = json; break }
+                            }
+                            status = DetailsGuess.summary(details)
+                            if (details == null || DetailsGuess.hasGaps(details)) details?.let { diagnostic = it.toString(2) }
                         }
                     },
                 ) { Text("Remplir") }
