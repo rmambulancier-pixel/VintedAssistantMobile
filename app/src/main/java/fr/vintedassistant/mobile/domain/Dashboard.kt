@@ -88,7 +88,7 @@ fun computeDashboard(
         .sortedByDescending { it.daysOnline }
 
     val categories = counted
-        .groupBy { it.category.ifBlank { "Sans catégorie" } }
+        .groupBy { JewelryCategory.of(it.category, it.title) }
         .map { (category, list) ->
             val delays = list.mapNotNull(::daysToSell)
             CategoryStats(

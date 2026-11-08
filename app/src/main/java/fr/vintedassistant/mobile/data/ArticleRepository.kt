@@ -565,6 +565,18 @@ class ArticleRepository(
         var keywords = 0
         db.withTransaction {
             val withSales = saleDao.articleIdsWithSales().toSet()
+            // Catégorie manquante (import Vinted) : déduite du titre, sur la fiche et sur ses ventes.
+            for (a in articleDao.getAll()) {
+                if (a.category.isNotBlank()) continue
+                val guess = fr.vintedassistant.mobile.domain.JewelryCategory.guess(a.title) ?: continue
+                articleDao.update(a.copy(category = guess))
+            }
+            for (s in saleDao.getAll()) {
+                if (s.category.isNotBlank()) continue
+                val fromArticle = s.articleId?.let { articleDao.getById(it)?.category }?.takeIf { it.isNotBlank() }
+                val guess = fromArticle ?: fr.vintedassistant.mobile.domain.JewelryCategory.guess(s.title) ?: continue
+                saleDao.update(s.copy(category = guess))
+            }
             for (a in articleDao.getAll()) {
                 if (a.vintedUrl.isBlank()) continue
                 if (a.status == ArticleStatus.SOLD.label && a.id !in withSales) {
