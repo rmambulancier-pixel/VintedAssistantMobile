@@ -5,8 +5,9 @@ import org.json.JSONTokener
 
 /**
  * Scripts exécutés dans la page Vinted ouverte par l'utilisateur, uniquement quand il appuie
- * sur un bouton. Ils ne lisent ni mot de passe ni cookie, ne cliquent sur rien et ne publient rien :
- * ils remplissent des champs visibles, ou décrivent la structure de la page (sans les valeurs saisies).
+ * sur un bouton. Ils ne lisent ni mot de passe ni cookie et ne publient jamais : ils remplissent le
+ * formulaire (champs, menu des catégories) ou décrivent la structure de la page (sans les valeurs saisies).
+ * Le bouton « Ajouter » de Vinted reste toujours à toucher par l'utilisateur.
  */
 object VintedPageScripts {
 
@@ -41,6 +42,76 @@ object VintedPageScripts {
         })($payload);
         """.trimIndent()
     }
+
+    /**
+     * Catégorie : ouvre le menu de Vinted, cherche [query] dans « Trouver une catégorie », puis descend
+     * vers le résultat le plus sûr (mot du bijou, genre, « bijou »), et valide avec « Fait ».
+     * Structure relevée le 8 novembre 2026 : boîte `.ReactModal__Content`, lignes `.web_ui__Cell__clickable`,
+     * bouton `input-dropdown-save-button`. Travail asynchrone : résultat dans `window.__vbCat`, lu par [categoryResult].
+     */
+    fun categoryStart(query: String, leaves: List<String>, gender: String, avoid: List<String>): String {
+        val payload = JSONObject().put("query", query).put("leaf", org.json.JSONArray(leaves))
+            .put("gender", gender).put("avoid", org.json.JSONArray(avoid)).toString()
+        return """
+        (function(p){
+          const R={done:false,steps:[],options:[]};window.__vbCat=R;
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const norm=s=>(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+          function setVal(e,v){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,v);
+            e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}
+          const dialog=()=>document.querySelector('.ReactModal__Content');
+          const cells=()=>{const d=dialog();return d?Array.from(d.querySelectorAll('.web_ui__Cell__clickable')):[];};
+          const text=c=>norm(c.innerText||c.textContent);
+          const score=t=>(p.leaf.some(l=>t.includes(l))?4:0)+(t.includes(p.gender)?2:0)+(t.includes('bijou')?1:0)-(p.avoid.some(a=>t.includes(a))?3:0);
+          const saveBtn=()=>document.querySelector('[data-testid="input-dropdown-save-button"]');
+          const canSave=b=>b&&!b.disabled&&!/disabled/.test(b.className);
+          (async()=>{
+            try{
+              const inp=document.querySelector('[data-testid="catalog-select-dropdown-input"]')||document.getElementById('category');
+              if(!inp){R.error='champ Catégorie introuvable';return;}
+              if(!dialog()){inp.focus();inp.click();}
+              for(let i=0;i<25&&!dialog();i++)await sleep(150);
+              const d=dialog();if(!d){R.error='menu des catégories non ouvert';return;}
+              const cs=getComputedStyle(d),rc=d.getBoundingClientRect(),ov=getComputedStyle(d.parentElement);
+              R.probe={rect:[rc.x,rc.y,rc.width,rc.height].map(Math.round),opacity:cs.opacity,transform:cs.transform,
+                visibility:cs.visibility,position:cs.position,overlayOpacity:ov.opacity,viewport:[innerWidth,innerHeight]};
+              const search=d.querySelector('input');
+              if(search&&p.query){search.focus();setVal(search,p.query);await sleep(1200);}
+              for(let depth=0;depth<6;depth++){
+                const list=cells().map(c=>({c,t:text(c)})).filter(x=>x.t&&!R.steps.includes(x.t.slice(0,90)));
+                list.forEach(x=>x.s=score(x.t));list.sort((a,b)=>b.s-a.s);
+                R.options=list.slice(0,10).map(x=>x.t.slice(0,90)+' ['+x.s+']');
+                if(!list.length||list[0].s<4){if(!R.error)R.error='aucune catégorie sûre';break;}
+                R.steps.push(list[0].t.slice(0,90));
+                list[0].c.click();
+                await sleep(800);
+                const b=saveBtn();
+                if(canSave(b)){b.click();await sleep(600);R.ok=true;break;}
+                if(!dialog()){R.ok=true;break;}
+              }
+              R.chosen=inp.value||'';
+              if(R.ok&&dialog()){const b=saveBtn();if(canSave(b))b.click();}
+            }catch(e){R.error=String(e);}finally{R.done=true;}
+          })();
+          return 'started';
+        })($payload);
+        """.trimIndent()
+    }
+
+    val categoryResult: String = "(function(){return JSON.stringify(window.__vbCat||null);})();"
+
+    /**
+     * Correctif d'affichage : dans la fenêtre intégrée, la boîte des catégories de Vinted restait invisible
+     * (fond grisé seul). On force son opacité et sa visibilité, sans toucher à sa position.
+     */
+    val dialogFix: String = """
+        (function(){
+          if(document.getElementById('vb-dialog-fix'))return 'ok';
+          const s=document.createElement('style');s.id='vb-dialog-fix';
+          s.textContent='.ReactModal__Content,.web_ui__Dialog__dialog{opacity:1 !important;visibility:visible !important;}';
+          document.head.appendChild(s);return 'ok';
+        })();
+    """.trimIndent()
 
     /** Décrit les champs et boutons de la page (sans leur contenu), pour écrire des automatisations fiables ensuite. */
     val diagnostic: String = """

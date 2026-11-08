@@ -192,8 +192,22 @@ fun VintedWebScreen(
                         val description = a.description.ifBlank { draft.description }
                         val tags = a.keywords.ifBlank { draft.keywords }
                         val full = if (tags.isBlank() || description.contains(tags)) description else "$description\n\n$tags"
-                        session.webView?.evaluateJavascript(VintedPageScripts.fill(a.title, full, Money.formatPlain(a.priceCents))) { r ->
-                            status = VintedPageScripts.fillSummary(VintedPageScripts.decode(r))
+                        val web = session.webView ?: return@Button
+                        scope.launch {
+                            web.evaluateJavascript(VintedPageScripts.dialogFix, null)
+                            val filled = VintedPageScripts.fillSummary(web.evalJs(VintedPageScripts.fill(a.title, full, Money.formatPlain(a.priceCents))))
+                            status = "$filled Catégorie en cours…"
+                            val c = CategoryGuess.of(a)
+                            web.evalJs(VintedPageScripts.categoryStart(c.query, c.leaves, c.gender, c.avoid))
+                            var result: org.json.JSONObject? = null
+                            for (i in 0 until 50) {
+                                delay(300)
+                                val raw = web.evalJs(VintedPageScripts.categoryResult)
+                                val json = raw?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
+                                if (json != null && json.optBoolean("done")) { result = json; break }
+                            }
+                            status = filled + " " + CategoryGuess.summary(result)
+                            if (result != null && !result.optBoolean("ok")) diagnostic = result.toString(2)
                         }
                     },
                 ) { Text("Remplir") }
@@ -291,6 +305,7 @@ fun VintedWebScreen(
                         }
 
                         override fun onPageFinished(view: WebView, url: String?) {
+                            view.evaluateJavascript(VintedPageScripts.dialogFix, null)
                             loading = false
                             currentUrl = url.orEmpty()
                             session.pageLoaded?.complete(Unit)

@@ -216,6 +216,13 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   déduit des prix unitaires payés : pas de frais négatifs. Lecture générique gardée en secours.
   Validé sous Chromium sur les deux pages réelles (13 et 24 produits, dates, photos, noms).
 
+- **0.12** : publication assistée, étape 1. « Remplir » enchaîne titre, description, prix puis la catégorie :
+  ouverture du menu Vinted, recherche (« bracelet », « collier »…) dans « Trouver une catégorie », choix du
+  résultat le plus sûr (type, genre, « bijou » ; enfants et autre genre écartés), validation « Fait ». En
+  cas de doute, rien n'est choisi et le détail (options vues, relevé d'affichage) s'affiche. Correctif
+  d'affichage de la boîte des catégories (opacité et visibilité forcées). Le bouton « Ajouter » reste à
+  toucher par l'utilisateur.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des
