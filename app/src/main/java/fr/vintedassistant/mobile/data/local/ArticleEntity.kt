@@ -152,6 +152,9 @@ data class PurchaseItemEntity(
     @ColumnInfo(name = "landed_unit_cents") val landedUnitCents: Long,
     // --- v7 ---
     @ColumnInfo(defaultValue = "") val sku: String = "",
+    // --- v8 ---
+    /** Pièces commandées mais jamais reçues (rupture chez le fournisseur, colis incomplet). */
+    @ColumnInfo(defaultValue = "0") val missing: Int = 0,
 )
 
 /** Journal des publications, republications et changements de prix. */

@@ -61,6 +61,7 @@ fun PurchasesScreen(
     val orders by repo.orders.collectAsStateWithLifecycle(initialValue = null)
     val scope = rememberCoroutineScope()
     var linkFor by remember { mutableStateOf<PurchaseItem?>(null) }
+    var missingFor by remember { mutableStateOf<PurchaseItem?>(null) }
     var manual by remember { mutableStateOf(false) }
     var deleteOrder by remember { mutableStateOf<PurchaseOrder?>(null) }
     var dateFor by remember { mutableStateOf<PurchaseOrder?>(null) }
@@ -71,6 +72,40 @@ fun PurchasesScreen(
 
     fun run(error: String, block: suspend () -> Unit) {
         scope.launch { try { block() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { onMessage(error) } }
+    }
+
+    missingFor?.let { item ->
+        var count by remember(item.id) { mutableStateOf(if (item.missing > 0) item.missing else item.quantity - item.linkedCount) }
+        AlertDialog(
+            onDismissRequest = { missingFor = null },
+            title = { Text("Pièces jamais reçues") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(item.name, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                    Text(
+                        "Commandées : ${item.quantity}. Indique combien ne sont jamais arrivées (rupture, colis incomplet) : " +
+                            "elles sortent du stock et les frais de port sont répartis sur les pièces reçues.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedButton(onClick = { count = (count - 1).coerceAtLeast(0) }) { Text("−") }
+                        Text("$count", style = MaterialTheme.typography.titleLarge)
+                        OutlinedButton(onClick = { count = (count + 1).coerceAtMost(item.quantity - item.linkedCount) }) { Text("+") }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val target = item
+                    missingFor = null
+                    run("Mise à jour impossible.") {
+                        repo.setMissing(target.id, count)
+                        onMessage(if (count == 0) "Toutes les pièces sont comptées comme reçues." else "$count pièce(s) jamais reçue(s) : retirée(s) du stock.")
+                    }
+                }) { Text("Enregistrer") }
+            },
+            dismissButton = { TextButton(onClick = { missingFor = null }) { Text("Annuler") } },
+        )
     }
 
     val pickBackup = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
@@ -273,10 +308,16 @@ fun PurchasesScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                                 Text(
-                                    "Rattachés : ${item.linkedCount} / ${item.quantity}",
+                                    "Rattachés : ${item.linkedCount} / ${item.delivered}" +
+                                        if (item.missing > 0) " • ${item.missing} jamais reçue(s)" else "",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = if (item.remaining > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                                 )
+                                if (order.received) {
+                                    TextButton(onClick = { missingFor = item }) {
+                                        Text(if (item.missing > 0) "Corriger les pièces non reçues" else "Pas reçu ?")
+                                    }
+                                }
                                 if (item.remaining > 0 && order.received) {
                                     Row {
                                         TextButton(onClick = { linkFor = item }) { Text("Rattacher") }

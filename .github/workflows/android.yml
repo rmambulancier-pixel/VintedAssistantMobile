@@ -64,6 +64,14 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Schémas Room (à versionner)
+        uses: actions/upload-artifact@v4
+        with:
+          name: room-schemas
+          path: app/schemas/
+          if-no-files-found: ignore
+          retention-days: 14
+
   # Tests sur un vrai Android (émulateur) : base Room, migration 1 → 2, opérations du dépôt.
   instrumented-tests:
     runs-on: ubuntu-latest

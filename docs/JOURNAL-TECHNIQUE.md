@@ -306,6 +306,11 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   repli sur l'ancienne méthode ; le prix n'est plus posé au début du remplissage, seulement à la fin ; la vérification
   lit aussi le message d'erreur sous le champ et retente avec la virgule.
 
+- **0.19** : pièces commandées jamais reçues (base v8, colonne `purchase_items.missing`, migration automatique 7 → 8).
+  Achats : « Pas reçu ? » sur chaque produit d'une commande reçue ; les pièces signalées sortent du stock, les frais
+  de port sont répartis à nouveau sur les seules pièces reçues (coût des fiches en stock mis à jour, ventes passées
+  inchangées) ; le signalement survit à une nouvelle lecture de la commande. CI : schémas Room publiés en artefact.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

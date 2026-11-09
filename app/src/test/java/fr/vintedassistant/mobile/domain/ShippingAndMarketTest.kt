@@ -123,3 +123,18 @@ class QuickReplyTest {
         org.junit.Assert.assertNull(QuickReply.prepare(VintedEventKind.OTHER, "", "", a, 10))
     }
 }
+
+class MissingPiecesTest {
+    @Test
+    fun missingPiecesLeaveTheStock() {
+        val items = listOf(
+            PurchaseItem(1, 10, "Bracelet fleurs (Vert Rose)", null, 0, 1, 37, 0, "", "NH1", missing = 1),
+            PurchaseItem(2, 10, "Collier tennis", null, 0, 3, 37, 1, "", "NH2"),
+        )
+        val order = PurchaseOrder(10, "Nihao", "R", 0, 0, 879, 0, items)
+        val stock = StockLedger.build(listOf(order), emptyList())
+        org.junit.Assert.assertEquals(3, stock.bought)
+        org.junit.Assert.assertEquals(0, items[0].remaining)
+        org.junit.Assert.assertEquals(0, items[0].delivered)
+    }
+}

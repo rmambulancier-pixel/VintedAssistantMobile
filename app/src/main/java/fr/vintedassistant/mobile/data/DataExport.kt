@@ -80,7 +80,7 @@ class DataExport(
                                 put(JSONObject()
                                     .put("id", i.id).put("name", i.name).put("sku", i.sku).put("quantity", i.quantity)
                                     .put("unitPriceCents", i.unitPriceCents).put("landedUnitCents", i.landedUnitCents)
-                                    .put("linked", i.linkedCount))
+                                    .put("linked", i.linkedCount).put("missing", i.missing))
                             }
                         }))
                 }

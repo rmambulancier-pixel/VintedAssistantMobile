@@ -132,7 +132,7 @@ object StockLedger {
                 StockLot(
                     itemId = i.id, orderId = o.id, orderRef = o.orderRef, supplier = o.supplier, orderedAt = o.orderedAt,
                     unitPriceCents = i.unitPriceCents, landedUnitCents = i.landedUnitCents,
-                    quantity = i.quantity, linkedCount = byItem[i.id]?.size ?: 0,
+                    quantity = i.delivered, linkedCount = byItem[i.id]?.size ?: 0,
                     received = o.received, deliveryEta = o.deliveryEta,
                 )
             }

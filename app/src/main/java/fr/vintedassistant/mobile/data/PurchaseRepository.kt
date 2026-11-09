@@ -41,7 +41,7 @@ class PurchaseRepository(
                     id = o.id, supplier = o.supplier, orderRef = o.orderRef, orderedAt = o.orderedAt,
                     itemsTotalCents = o.itemsTotalCents, shippingCents = o.shippingCents, feesCents = o.feesCents,
                     items = byOrder[o.id].orEmpty().map {
-                        PurchaseItem(it.id, it.orderId, it.name, it.imageFile, it.unitPriceCents, it.quantity, it.landedUnitCents, linked[it.id] ?: 0, it.imageUrl, it.sku)
+                        PurchaseItem(it.id, it.orderId, it.name, it.imageFile, it.unitPriceCents, it.quantity, it.landedUnitCents, linked[it.id] ?: 0, it.imageUrl, it.sku, it.missing)
                     },
                     received = o.received,
                     deliveryEta = o.deliveryEta,
@@ -78,7 +78,9 @@ class PurchaseRepository(
         // Fiches rattachées à un produit qui n'existe plus dans la nouvelle lecture : détachées, coût conservé.
         val orphanLinks = oldItems.filter { it.id !in used }.flatMap { articleDao.linkedToPurchase(it.id).map { a -> a.id } }
         val oldImages = existing?.let { e -> dao.itemsOf(e.id).mapNotNull { it.imageFile } }.orEmpty()
-        val landed = LandedCost.allocate(order.lines.map { PurchaseLine(it.unitPriceCents, it.quantity) }, order.shippingCents + order.feesCents)
+        // Pièces jamais reçues déjà signalées : conservées à la relecture, et sans part des frais de port.
+        val missing = order.lines.mapIndexed { i, line -> (matched[i]?.missing ?: 0).coerceIn(0, line.quantity) }
+        val landed = allocateDelivered(order.lines.mapIndexed { i, l -> Triple(l.unitPriceCents, l.quantity, missing[i]) }, order.shippingCents + order.feesCents)
         val images = order.lines.map { line ->
             if (!downloadImages || line.imageUrl.isBlank() || photoStore == null) null
             else try {
@@ -109,7 +111,7 @@ class PurchaseRepository(
                     PurchaseItemEntity(
                         orderId = id, name = line.name, imageFile = images[i], imageUrl = line.imageUrl,
                         productUrl = line.productUrl, unitPriceCents = line.unitPriceCents,
-                        quantity = line.quantity, landedUnitCents = landed[i], sku = line.sku,
+                        quantity = line.quantity, landedUnitCents = landed[i], sku = line.sku, missing = missing[i],
                     )
                 )
                 previousLinks[i].orEmpty().forEach { aid ->
@@ -144,7 +146,7 @@ class PurchaseRepository(
             val order = orders.firstOrNull { it.orderRef == b.orderRef } ?: continue
             val candidates = items.filter { it.orderId == order.id && (b.sku.isBlank() || it.sku == b.sku) }
             val item = (candidates.filter { StockLedger.normalize(it.name) == StockLedger.normalize(b.name) } + candidates)
-                .firstOrNull { articleDao.linkedToPurchase(it.id).size < it.quantity } ?: continue
+                .firstOrNull { articleDao.linkedToPurchase(it.id).size < it.quantity - it.missing } ?: continue
             link(article.id, item.id)
             restored++
         }
@@ -179,7 +181,7 @@ class PurchaseRepository(
         check(sale.articleId == null) { "Cette vente a déjà une fiche" }
         val item = dao.getItem(itemId) ?: throw IllegalStateException("Produit introuvable")
         val linked = articleDao.linkedToPurchase(itemId).size
-        check(linked < item.quantity) { "Toutes les pièces de ce produit sont déjà rattachées" }
+        check(linked < item.quantity - item.missing) { "Toutes les pièces reçues de ce produit sont déjà rattachées" }
         val now = clock()
         val id = articleDao.insert(
             ArticleEntity(
@@ -197,6 +199,39 @@ class PurchaseRepository(
         val note = "Pièce envoyée : ${item.name.take(80)}"
         saleDao.update(sale.copy(articleId = id, costCents = item.landedUnitCents, notes = listOf(sale.notes, note).filter { it.isNotBlank() }.joinToString("\n")))
         id
+    }
+
+    /** Frais de port répartis sur les seules pièces reçues ; une ligne jamais reçue garde son prix payé. */
+    private fun allocateDelivered(lines: List<Triple<Long, Int, Int>>, extraCents: Long): List<Long> {
+        val delivered = lines.withIndex().filter { (_, l) -> l.second - l.third > 0 }
+        val share = LandedCost.allocate(delivered.map { (_, l) -> PurchaseLine(l.first, l.second - l.third) }, extraCents)
+        val out = lines.map { it.first }.toMutableList()
+        delivered.forEachIndexed { k, (i, _) -> out[i] = share[k] }
+        return out
+    }
+
+    /**
+     * Signale [missing] pièces jamais reçues sur un produit (rupture, colis incomplet). Elles sortent du stock
+     * et les frais de port de la commande sont répartis à nouveau sur les pièces reçues ; le coût des fiches
+     * encore en stock suit. Les ventes passées gardent leur coût.
+     */
+    suspend fun setMissing(itemId: Long, missing: Int) = db.withTransaction {
+        val item = dao.getItem(itemId) ?: throw IllegalStateException("Produit introuvable")
+        val linked = articleDao.linkedToPurchase(itemId).size
+        val value = missing.coerceIn(0, item.quantity)
+        check(item.quantity - value >= linked) { "Des fiches sont rattachées à ces pièces : détache-les d'abord." }
+        dao.updateItem(item.copy(missing = value))
+        val order = dao.getOrder(item.orderId) ?: return@withTransaction
+        val items = dao.itemsOf(order.id).sortedBy { it.id }
+        val landed = allocateDelivered(items.map { Triple(it.unitPriceCents, it.quantity, it.missing) }, order.shippingCents + order.feesCents)
+        val now = clock()
+        items.forEachIndexed { i, it ->
+            if (it.landedUnitCents == landed[i]) return@forEachIndexed
+            dao.updateItem(it.copy(landedUnitCents = landed[i]))
+            articleDao.linkedToPurchase(it.id).filter { a -> ArticleStatus.fromLabel(a.status).inStock }.forEach { a ->
+                articleDao.update(a.copy(costCents = landed[i], updatedAt = now))
+            }
+        }
     }
 
     /** Détache l'article ; son coût d'achat est conservé (modifiable à la main). */
@@ -250,7 +285,7 @@ class PurchaseRepository(
         if (item != null) check(dao.getOrder(item.orderId)?.received != false) { "Commande pas encore reçue" }
         if (item != null) {
             val used = articleDao.linkedToPurchase(item.id).size
-            check(used < item.quantity) { "Plus de pièce libre dans ce lot" }
+            check(used < item.quantity - item.missing) { "Plus de pièce libre dans ce lot" }
         }
         val now = clock()
         val copies = photoDao.forArticle(templateId).mapNotNull { photo ->

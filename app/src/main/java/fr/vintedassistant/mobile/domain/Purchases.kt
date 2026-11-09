@@ -20,8 +20,12 @@ data class PurchaseItem(
     val imageUrl: String = "",
     /** Code produit du fournisseur, vide s'il n'a pas été lu. */
     val sku: String = "",
+    /** Pièces jamais reçues : elles ne comptent pas dans le stock. */
+    val missing: Int = 0,
 ) {
-    val remaining: Int get() = (quantity - linkedCount).coerceAtLeast(0)
+    /** Pièces réellement reçues (ou attendues tant que la commande est en livraison). */
+    val delivered: Int get() = (quantity - missing).coerceAtLeast(0)
+    val remaining: Int get() = (delivered - linkedCount).coerceAtLeast(0)
 }
 
 data class PurchaseOrder(

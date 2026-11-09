@@ -645,4 +645,22 @@ class RepositoryTest {
         val again = try { purchases.attachSaleToPurchase(saleId, item.id); false } catch (e: IllegalStateException) { true }
         assertTrue(again)
     }
+
+    @Test
+    fun missingPiecesLeaveStockAndShippingIsReallocated() = runBlocking {
+        val purchases = PurchaseRepository(db, photoStore = null, clock = { now })
+        val order = ParsedOrder("NH-M", null,
+            listOf(ParsedOrderLine("Bracelet fleurs", 0, 1, "", "", sku = "NH1"), ParsedOrderLine("Collier tennis", 0, 1, "", "", sku = "NH2")),
+            shippingCents = 800, feesCents = 0, totalCents = null, url = "")
+        purchases.saveOrder("Nihaojewelry", order, downloadImages = false, received = true)
+        val items = purchases.orders.first().single().items
+        assertEquals(400L, items.first { it.sku == "NH2" }.landedUnitCents)
+        purchases.setMissing(items.first { it.sku == "NH1" }.id, 1)
+        val after = purchases.orders.first().single().items
+        assertEquals(0, after.first { it.sku == "NH1" }.delivered)
+        assertEquals(800L, after.first { it.sku == "NH2" }.landedUnitCents)
+        // Relecture de la commande : la pièce manquante reste signalée.
+        purchases.saveOrder("Nihaojewelry", order, downloadImages = false, received = true)
+        assertEquals(1, purchases.orders.first().single().items.first { it.sku == "NH1" }.missing)
+    }
 }

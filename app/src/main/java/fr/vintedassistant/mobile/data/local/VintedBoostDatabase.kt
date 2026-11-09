@@ -20,6 +20,7 @@ import androidx.room.RoomDatabase
  * - v5 (0.6.0) : ventes importées sans date connue.
  * - v6 (0.7.0) : achats fournisseur et coût de revient.
  * - v7 (0.9.0) : code produit fournisseur, commande reçue ou en cours de livraison.
+ * - v8 (0.19.0) : pièces commandées jamais reçues.
  */
 @Database(
     entities = [
@@ -33,6 +34,7 @@ import androidx.room.RoomDatabase
         AutoMigration(from = 4, to = 5),
         AutoMigration(from = 5, to = 6),
         AutoMigration(from = 6, to = 7),
+        AutoMigration(from = 7, to = 8),
     ],
 )
 abstract class VintedBoostDatabase : RoomDatabase() {
@@ -45,7 +47,7 @@ abstract class VintedBoostDatabase : RoomDatabase() {
 
     companion object {
         const val FILE_NAME = "vinted_boost.db"
-        const val VERSION = 7
+        const val VERSION = 8
 
         fun create(context: Context, name: String? = FILE_NAME): VintedBoostDatabase {
             val builder = if (name == null) {
