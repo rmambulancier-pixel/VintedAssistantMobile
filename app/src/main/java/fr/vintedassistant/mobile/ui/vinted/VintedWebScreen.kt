@@ -191,7 +191,7 @@ fun VintedWebScreen(
             web.evalJs(VintedPageScripts.openPhotoPicker)
             delay(1500)
         }
-        val filled = VintedPageScripts.fillSummary(web.evalJs(VintedPageScripts.fill(a.title, full, Money.formatPlain(a.priceCents).replace(',', '.'))))
+        val filled = VintedPageScripts.fillSummary(web.evalJs(VintedPageScripts.fill(a.title, full, "")))
         status = "$filled Catégorie en cours…"
         val c = CategoryGuess.of(a)
         web.evalJs(VintedPageScripts.categoryStart(c.query, c.leaves, c.gender, c.avoid))
@@ -224,7 +224,7 @@ fun VintedWebScreen(
             web.evalJs(VintedPageScripts.setPrice(v))
             delay(600)
             val shown = web.evalJs(VintedPageScripts.readPrice).orEmpty()
-            if (shown.any { it.isDigit() } && !shown.contains("NaN", ignoreCase = true)) { priceOk = true; break }
+            if (shown.any { it.isDigit() } && !shown.contains("NaN", ignoreCase = true) && !shown.contains("ERREUR")) { priceOk = true; break }
         }
         web.evalJs(VintedPageScripts.packageSmall)
         status = DetailsGuess.summary(details) + (if (priceOk) "" else " Prix à saisir à la main.")

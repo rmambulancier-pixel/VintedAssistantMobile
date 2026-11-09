@@ -210,15 +210,27 @@ object VintedPageScripts {
           const e=document.getElementById('price')||document.querySelector('[data-testid="price-input--input"]');
           if(!e)return 'absent';
           e.focus();
-          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,v);
-          e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));
-          e.blur();e.dispatchEvent(new Event('blur',{bubbles:true}));
+          // Saisie « comme au clavier » : React enregistre la valeur (la simple affectation pouvait rester affichée
+          // sans être prise en compte, d'où « Le champ prix doit être supérieur ou égal à 1.0 »).
+          e.select();
+          let typed=false;
+          try{typed=document.execCommand('selectAll',false,null)&&document.execCommand('insertText',false,v);}catch(x){typed=false;}
+          if(!typed||e.value.replace(/[^0-9]/g,'')===''){
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,v);
+            e.dispatchEvent(new InputEvent('input',{bubbles:true,data:v,inputType:'insertText'}));
+            e.dispatchEvent(new Event('change',{bubbles:true}));
+          }
+          e.blur();e.dispatchEvent(new Event('blur',{bubbles:true}));e.dispatchEvent(new FocusEvent('focusout',{bubbles:true}));
           return 'ok';
         })($v);
         """.trimIndent()
     }
 
-    val readPrice: String = "(function(){const e=document.getElementById('price');return e?e.value:'absent';})();"
+    /** Valeur affichée du prix, suivie de « |ERREUR » si Vinted affiche un message d'erreur sous le champ. */
+    val readPrice: String = "(function(){const e=document.getElementById('price');if(!e)return 'absent';" +
+        "const box=e.closest('[class*=\"input\"]')&&e.closest('[class*=\"input\"]').parentElement;" +
+        "const err=box&&/sup[eé]rieur ou [eé]gal|invalide|obligatoire/i.test(box.innerText||'');" +
+        "return e.value+(err?'|ERREUR':'');})();"
 
     /** Taille du colis : « Petit » (recommandé pour un bijou) si aucune taille n'est cochée. */
     val packageSmall: String = """

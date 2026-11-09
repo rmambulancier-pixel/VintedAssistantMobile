@@ -301,6 +301,11 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   Série de republication : les fiches sans lien vers l'annonce actuelle sont écartées (l'ancienne ne pourrait pas
   être supprimée, doublon garanti).
 
+- **0.18.1** : prix : « 6,00 € » s'affichait mais Vinted répondait « Le champ prix doit être supérieur ou égal à 1.0 »
+  (valeur affichée, pas enregistrée par React). Saisie désormais « comme au clavier » (`execCommand('insertText')`),
+  repli sur l'ancienne méthode ; le prix n'est plus posé au début du remplissage, seulement à la fin ; la vérification
+  lit aussi le message d'erreur sous le champ et retente avec la virgule.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des
