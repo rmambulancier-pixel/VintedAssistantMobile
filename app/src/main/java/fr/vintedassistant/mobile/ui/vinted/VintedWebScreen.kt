@@ -223,7 +223,7 @@ fun VintedWebScreen(
                             val c = CategoryGuess.of(a)
                             web.evalJs(VintedPageScripts.categoryStart(c.query, c.leaves, c.gender, c.avoid))
                             var result: org.json.JSONObject? = null
-                            for (i in 0 until 50) {
+                            for (i in 0 until 100) {
                                 delay(300)
                                 val raw = web.evalJs(VintedPageScripts.categoryResult)
                                 val json = raw?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }

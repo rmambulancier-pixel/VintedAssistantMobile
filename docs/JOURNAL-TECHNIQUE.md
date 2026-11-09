@@ -266,6 +266,10 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   chargé ; la catégorie attend son champ jusqu'à 8 s et le cherche aussi par son libellé. En cas d'échec,
   le diagnostic donne la page et la liste des champs (identifiants techniques et libellés, aucune donnée saisie).
 
+- **0.16.2** : catégorie : la boîte de Vinted s'ouvrait vide (hauteur 0) le temps de charger sa liste.
+  Le script attend maintenant les lignes (5 s) puis les résultats de la recherche (6 s), et chaque niveau
+  (3 s). En cas d'échec, le diagnostic donne le nombre de lignes, le texte visible de la boîte et ses classes.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

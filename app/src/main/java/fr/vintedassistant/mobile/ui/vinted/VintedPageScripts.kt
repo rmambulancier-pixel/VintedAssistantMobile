@@ -60,7 +60,7 @@ object VintedPageScripts {
           function setVal(e,v){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,v);
             e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}
           const dialog=()=>document.querySelector('.ReactModal__Content');
-          const cells=()=>{const d=dialog();return d?Array.from(d.querySelectorAll('.web_ui__Cell__clickable')):[];};
+          const cells=()=>{const d=dialog();return d?Array.from(d.querySelectorAll('.web_ui__Cell__clickable,[class*="Cell__clickable"]')):[];};
           const text=c=>norm(c.innerText||c.textContent);
           const score=t=>(p.leaf.some(l=>t.includes(l))?4:0)+(t.includes(p.gender)?2:0)+(t.includes('bijou')?1:0)-(p.avoid.some(a=>t.includes(a))?3:0);
           const saveBtn=()=>document.querySelector('[data-testid="input-dropdown-save-button"]');
@@ -87,13 +87,27 @@ object VintedPageScripts {
               const cs=getComputedStyle(d),rc=d.getBoundingClientRect(),ov=getComputedStyle(d.parentElement);
               R.probe={rect:[rc.x,rc.y,rc.width,rc.height].map(Math.round),opacity:cs.opacity,transform:cs.transform,
                 visibility:cs.visibility,position:cs.position,overlayOpacity:ov.opacity,viewport:[innerWidth,innerHeight]};
+              // La liste se charge après l'ouverture : on attend des lignes (5 s au plus).
+              const waitCells=async(ms,pred)=>{for(let t=0;t<ms;t+=200){const c=cells();if(c.length&&(!pred||pred(c)))return c;await sleep(200);}return cells();};
+              await waitCells(5000);
               const search=d.querySelector('input');
-              if(search&&p.query){search.focus();setVal(search,p.query);await sleep(1200);}
+              if(search&&p.query){
+                search.focus();setVal(search,p.query);await sleep(400);
+                await waitCells(6000,c=>c.some(x=>p.leaf.some(l=>text(x).includes(l))));
+              }
               for(let depth=0;depth<6;depth++){
+                if(depth>0)await waitCells(3000);
                 const list=cells().map(c=>({c,t:text(c)})).filter(x=>x.t&&!R.steps.includes(x.t.slice(0,90)));
                 list.forEach(x=>x.s=score(x.t));list.sort((a,b)=>b.s-a.s);
                 R.options=list.slice(0,10).map(x=>x.t.slice(0,90)+' ['+x.s+']');
-                if(!list.length||list[0].s<4){if(!R.error)R.error='aucune catégorie sûre';break;}
+                if(!list.length||list[0].s<4){
+                  if(!R.error)R.error=list.length?'aucune catégorie sûre':'liste des catégories vide';
+                  const dd=dialog();
+                  R.cellCount=cells().length;
+                  R.dialogText=dd?(dd.innerText||'').replace(/\s+/g,' ').slice(0,300):'';
+                  R.dialogClasses=dd?Array.from(dd.querySelectorAll('[role="button"],li,[class*="Cell"]')).slice(0,6).map(e=>String(e.className).slice(0,80)):[];
+                  break;
+                }
                 R.steps.push(list[0].t.slice(0,90));
                 list[0].c.click();
                 await sleep(800);
