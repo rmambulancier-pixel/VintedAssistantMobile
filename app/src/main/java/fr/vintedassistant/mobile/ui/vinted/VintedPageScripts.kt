@@ -161,20 +161,24 @@ object VintedPageScripts {
                 inp.focus();inp.click();
                 for(let i=0;i<20&&!dialog();i++)await sleep(150);
                 if(!dialog()){out.status='menu non ouvert';continue;}
-                await sleep(400);
-                const search=dialog().querySelector('input');
+                // La liste se charge après l'ouverture : on attend des options (5 s au plus).
+                const waitOptions=async(ms,pred)=>{for(let t=0;t<ms;t+=200){const o=options();if(o.length&&(!pred||pred(o)))return o;await sleep(200);}return options();};
+                await waitOptions(5000);
+                const search=dialog()&&dialog().querySelector('input');
                 for(const v of f.values){
                   if(out.picked.length>=f.max)break;
-                  if(search&&f.search){search.focus();setVal(search,v);await sleep(1000);}
                   const nv=norm(v);
+                  if(search&&f.search){search.focus();setVal(search,v);await sleep(400);await waitOptions(4000,o=>o.some(x=>x.t===nv||x.t.startsWith(nv)));}
                   const list=options();
                   out.seen=list.slice(0,25).map(x=>x.t);
-                  const hit=list.find(x=>x.t===nv)||list.find(x=>x.t.startsWith(nv+' ')||x.t.startsWith(nv))||(f.loose?list.find(x=>x.t.includes(nv)):null);
+                  // Marque : nom exact uniquement (jamais une marque voisine), sinon « Sans marque ».
+                  const hit=list.find(x=>x.t===nv)||(f.exact?null:(list.find(x=>x.t.startsWith(nv+' ')||x.t.startsWith(nv))||(f.loose?list.find(x=>x.t.includes(nv)):null)));
                   if(hit&&!out.picked.includes(hit.t)){hit.e.click();out.picked.push(hit.t);await sleep(500);}
                 }
                 const b=saveBtn();
                 if(out.picked.length&&canSave(b)){b.click();await sleep(600);}
                 if(dialog()){const c=closeBtn();if(c){c.click();await sleep(400);}}
+                if(!out.seen.length){const dd=dialog();out.dialogText=dd?(dd.innerText||'').replace(/\s+/g,' ').slice(0,200):'(boîte fermée)';}
                 out.status=(inp.value||'').trim()?'rempli':(out.picked.length?'choisi, à vérifier':'non trouvé');
                 if((inp.value||'').trim())out.picked=[inp.value];
               }

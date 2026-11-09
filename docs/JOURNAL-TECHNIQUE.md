@@ -274,6 +274,10 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   (au démarrage et à chaque rattachement, pour toute vente à coût nul). « À vérifier » signale aussi les
   ventes sans coût et les ventes sans fiche.
 
+- **0.16.4** : détails Vinted : la marque n'est cochée que si le nom est exactement celui de la fiche (sinon
+  « Sans marque ») : « Vintage » avait donné « Vintage Love », une vraie marque. Les menus attendent leurs options
+  (5 s à l'ouverture, 4 s après une recherche) : Couleur et Matériau étaient lus avant d'être chargés.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

@@ -38,15 +38,15 @@ object DetailsGuess {
         }
         return JSONArray()
             .put(field("Pour qui", "pour qui", who, max = 1, search = false))
-            .put(field("Marque", "marque", listOf(brand, "Sans marque"), max = 1, search = true))
+            .put(field("Marque", "marque", listOf(brand, "Sans marque").distinct(), max = 1, search = true, exact = true))
             .put(field("État", "etat", listOf(condition), max = 1, search = false, loose = true))
             .put(field("Couleur", "couleur", colors.distinct().ifEmpty { listOf("Multicolore") }, max = 2, search = false))
             .put(field("Matériau", "materiau|matiere", materials.distinct(), max = 1, search = true))
     }
 
-    private fun field(name: String, label: String, values: List<String>, max: Int, search: Boolean, loose: Boolean = false) =
+    private fun field(name: String, label: String, values: List<String>, max: Int, search: Boolean, loose: Boolean = false, exact: Boolean = false) =
         JSONObject().put("name", name).put("label", label).put("values", JSONArray(values))
-            .put("max", max).put("search", search).put("loose", loose)
+            .put("max", max).put("search", search).put("loose", loose).put("exact", exact)
 
     fun hasGaps(result: JSONObject): Boolean {
         val f = result.optJSONArray("fields") ?: return true

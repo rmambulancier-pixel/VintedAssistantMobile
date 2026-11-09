@@ -238,7 +238,7 @@ fun VintedWebScreen(
                             delay(800)
                             web.evalJs(VintedPageScripts.detailsStart(DetailsGuess.fields(a)))
                             var details: org.json.JSONObject? = null
-                            for (i in 0 until 120) {
+                            for (i in 0 until 300) {
                                 delay(300)
                                 val json = web.evalJs(VintedPageScripts.detailsResult)?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
                                 if (json != null && json.optBoolean("done")) { details = json; break }
