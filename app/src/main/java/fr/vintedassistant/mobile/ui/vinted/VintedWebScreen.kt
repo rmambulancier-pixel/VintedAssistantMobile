@@ -194,6 +194,21 @@ fun VintedWebScreen(
                         val full = if (tags.isBlank() || description.contains(tags)) description else "$description\n\n$tags"
                         val web = session.webView ?: return@Button
                         scope.launch {
+                            // « Remplir » ne marche que sur le formulaire « Vendre » : on l'ouvre et on attend qu'il soit chargé.
+                            if (!currentUrl.contains("/items/new")) {
+                                status = "Ouverture du formulaire « Vendre »…"
+                                web.loadUrl(SELL)
+                                delay(1500)
+                            }
+                            var ready = false
+                            for (i in 0 until 40) {
+                                if (web.evalJs(VintedPageScripts.formReady) == "1") { ready = true; break }
+                                delay(300)
+                            }
+                            if (!ready) {
+                                status = "Le formulaire « Vendre » n'est pas encore chargé (connexion lente ou page de connexion). Réessaie « Remplir » dans un instant."
+                                return@launch
+                            }
                             web.evaluateJavascript(VintedPageScripts.dialogFix, null)
                             // Photos : le sélecteur de Vinted reçoit directement celles de la fiche.
                             if (a.photos.isNotEmpty()) {

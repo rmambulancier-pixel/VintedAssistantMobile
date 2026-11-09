@@ -67,8 +67,20 @@ object VintedPageScripts {
           const canSave=b=>b&&!b.disabled&&!/disabled/.test(b.className);
           (async()=>{
             try{
-              const inp=document.querySelector('[data-testid="catalog-select-dropdown-input"]')||document.getElementById('category');
-              if(!inp){R.error='champ Catégorie introuvable';return;}
+              const findCat=()=>document.querySelector('[data-testid="catalog-select-dropdown-input"]')||document.getElementById('category')||
+                document.querySelector('input[name="category"],input[id*="catalog"],[data-testid*="catalog"] input,[data-testid*="category"] input')||
+                (()=>{const lab=Array.from(document.querySelectorAll('label')).find(l=>/^cat[eé]gorie/i.test((l.innerText||'').trim()));
+                  const box=lab&&lab.parentElement&&lab.parentElement.closest('div');return box?box.querySelector('input'):null;})();
+              let inp=findCat();
+              // Formulaire encore en chargement : on attend jusqu'à 8 secondes.
+              for(let i=0;i<40&&!inp;i++){await sleep(200);inp=findCat();}
+              if(!inp){
+                R.error='champ Catégorie introuvable';
+                R.page=location.pathname;
+                R.fields=Array.from(document.querySelectorAll('input,textarea')).map(e=>(e.getAttribute('data-testid')||e.id||e.name||e.tagName).slice(0,60)).slice(0,30);
+                R.labels=Array.from(document.querySelectorAll('label')).map(l=>(l.innerText||'').trim().slice(0,40)).filter(Boolean).slice(0,30);
+                return;
+              }
               if(!dialog()){inp.focus();inp.click();}
               for(let i=0;i<25&&!dialog();i++)await sleep(150);
               const d=dialog();if(!d){R.error='menu des catégories non ouvert';return;}
@@ -201,6 +213,9 @@ object VintedPageScripts {
           return 'none';
         })();
     """.trimIndent()
+
+    /** Formulaire de mise en vente affiché : champ titre présent. */
+    val formReady: String = "(function(){return !!document.querySelector('input[name=\"title\"],[data-testid*=\"title\"] input,input#title')||document.querySelectorAll('textarea').length>0?'1':'0';})();"
 
     val categoryResult: String = "(function(){return JSON.stringify(window.__vbCat||null);})();"
 

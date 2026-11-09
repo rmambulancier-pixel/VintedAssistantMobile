@@ -262,6 +262,10 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
     60 % de mots communs, deux ventes au moins) s'il est plus bas, sinon la baisse en pourcentage ; plancher respecté.
   - Accueil : « À vérifier » (contrôles de `DataAudit`, dont les ventes sans achat rattaché), fiches ouvrables.
 
+- **0.16.1** : « Remplir » ouvre d'abord le formulaire « Vendre » s'il n'est pas affiché et attend qu'il soit
+  chargé ; la catégorie attend son champ jusqu'à 8 s et le cherche aussi par son libellé. En cas d'échec,
+  le diagnostic donne la page et la liste des champs (identifiants techniques et libellés, aucune donnée saisie).
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des
