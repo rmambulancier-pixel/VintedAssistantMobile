@@ -38,6 +38,11 @@ import fr.vintedassistant.mobile.domain.Money
 import fr.vintedassistant.mobile.domain.Sale
 import fr.vintedassistant.mobile.domain.ShippingStatus
 import fr.vintedassistant.mobile.domain.ShippingDeadline
+import fr.vintedassistant.mobile.domain.PurchaseOrder
+import fr.vintedassistant.mobile.domain.StockLedger
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.Button
 import java.time.format.DateTimeFormatter
 import fr.vintedassistant.mobile.ui.container
@@ -54,7 +59,16 @@ fun SalesScreen(
     modifier: Modifier,
     onStatus: (Long, ShippingStatus) -> Unit,
     onAttachLabel: (Long, Uri) -> Unit,
+    orders: List<PurchaseOrder> = emptyList(),
+    onAttachPurchase: (Long, Long) -> Unit = { _, _ -> },
 ) {
+    var attachFor by remember { mutableStateOf<Sale?>(null) }
+    attachFor?.let { sale ->
+        AttachPurchaseDialog(sale, orders, onDismiss = { attachFor = null }) { itemId ->
+            attachFor = null
+            onAttachPurchase(sale.id, itemId)
+        }
+    }
     val context = LocalContext.current
     var onlyToShip by rememberSaveable { mutableStateOf(false) }
     var labelForSale by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -118,6 +132,7 @@ fun SalesScreen(
                     labelForSale = sale.id
                     pickLabel.launch(arrayOf("application/pdf", "image/jpeg", "image/png"))
                 },
+                onAttachPurchase = if (sale.articleId == null && orders.isNotEmpty()) ({ attachFor = sale }) else null,
                 onOpenLabel = {
                     val store = context.container().labelStore
                     sale.labelPath?.let { openFile(context, store.shareUri(it), store.mimeType(it)) }
@@ -137,6 +152,7 @@ private fun SaleCard(
     onStatus: (ShippingStatus) -> Unit,
     onAddLabel: () -> Unit,
     onOpenLabel: () -> Unit,
+    onAttachPurchase: (() -> Unit)? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
     ElevatedCard(Modifier.fillMaxWidth()) {
@@ -163,6 +179,15 @@ private fun SaleCard(
                     color = if (d.urgent) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            if (onAttachPurchase != null) {
+                Text(
+                    "Vente sans fiche : coût d'achat inconnu. Indique la pièce sortie du stock (lot, pièce envoyée à la place d'une autre…).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                OutlinedButton(onClick = onAttachPurchase, modifier = Modifier.fillMaxWidth()) { Text("Rattacher à un achat") }
+            }
+            if (sale.notes.isNotBlank()) Text(sale.notes, style = MaterialTheme.typography.bodySmall)
             if (sale.shippingStatus == ShippingStatus.TO_SHIP) {
                 Button(onClick = { onStatus(ShippingStatus.SHIPPED) }, modifier = Modifier.fillMaxWidth()) { Text("Colis déposé : expédiée") }
             }
@@ -187,3 +212,38 @@ private fun SaleCard(
 }
 
 private val DUE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.FRANCE)
+
+@Composable
+private fun AttachPurchaseDialog(sale: Sale, orders: List<PurchaseOrder>, onDismiss: () -> Unit, onPick: (Long) -> Unit) {
+    var filter by remember { mutableStateOf("") }
+    val dateFormat = remember { DateFormat.getDateInstance(DateFormat.SHORT, Locale.FRANCE) }
+    val lots = remember(orders) {
+        orders.filter { it.received }.flatMap { o -> o.items.filter { it.remaining > 0 }.map { o to it } }
+    }
+    val words = StockLedger.normalize(filter).split(' ').filter { it.isNotBlank() }
+    val shown = lots
+        .filter { (_, i) -> val n = StockLedger.normalize(i.name); words.all { n.contains(it) } }
+        .sortedByDescending { (_, i) -> StockLedger.similarity(i.name, sale.title) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Quelle pièce est partie ?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Vente « ${sale.title.take(60)} » ${Money.formatEuros(sale.salePriceCents)}", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(value = filter, onValueChange = { filter = it }, label = { Text("Chercher (ex. ange)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                    if (shown.isEmpty()) item { Text("Aucune pièce disponible.", style = MaterialTheme.typography.bodySmall) }
+                    items(shown, key = { it.second.id }) { (o, i) ->
+                        TextButton(onClick = { onPick(i.id) }, modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                "${i.name.take(90)}\nCommande du ${dateFormat.format(Date(o.orderedAt))} • reste ${i.remaining} • coût ${Money.formatEuros(i.landedUnitCents)}",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
+    )
+}

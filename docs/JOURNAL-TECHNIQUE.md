@@ -282,6 +282,10 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   avoir été utilisé… ») qui masquait Couleur et Matériau. Toute fenêtre sans options est refermée (bouton
   « J'ai compris », « OK »… ou fermeture) avant et après chaque champ ; le bouton touché est noté dans le détail.
 
+- **0.16.6** : « Rattacher à un achat » sur une vente sans fiche (lot Vinted, pièce envoyée à la place d'une
+  autre) : choix de la pièce sortie du stock parmi les produits reçus qui ont encore des pièces ; création
+  d'une fiche « Vendu » rattachée, coût d'achat repris sur la vente, pièce envoyée notée dans la vente.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

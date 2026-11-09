@@ -620,4 +620,29 @@ class RepositoryTest {
         val refused = try { backup.prepare(java.io.ByteArrayInputStream(out.toByteArray())); false } catch (e: IllegalArgumentException) { true }
         assertTrue(refused)
     }
+
+    @Test
+    fun saleWithoutFicheIsAttachedToTheShippedPiece() = runBlocking {
+        val purchases = PurchaseRepository(db, photoStore = null, clock = { now })
+        val order = ParsedOrder("NH-9", null, listOf(ParsedOrderLine("Bracelet ange", 120, 2, "", "")),
+            shippingCents = 0, feesCents = 0, totalCents = null, url = "")
+        purchases.saveOrder("Nihaojewelry", order, downloadImages = false, received = true)
+        val item = purchases.orders.first().single().items.single()
+        val saleId = db.saleDao().insert(
+            fr.vintedassistant.mobile.data.local.SaleEntity(
+                articleId = null, title = "Pendentif croix strass", category = "Pendentifs", salePriceCents = 280,
+                costCents = 0, feesCents = 0, soldAt = now, listedAt = null, buyer = "", shippingStatus = "Livrée",
+                shippedAt = null, labelFile = null, notes = "",
+            ),
+        )
+        val articleId = purchases.attachSaleToPurchase(saleId, item.id)
+        val sale = repo.sales.first().single()
+        assertEquals(articleId, sale.articleId)
+        assertEquals(item.landedUnitCents, sale.costCents)
+        assertEquals("Pendentif croix strass", sale.title)
+        assertEquals(ArticleStatus.SOLD, repo.getArticle(articleId)!!.status)
+        assertEquals(1, purchases.orders.first().single().items.single().linkedCount)
+        val again = try { purchases.attachSaleToPurchase(saleId, item.id); false } catch (e: IllegalStateException) { true }
+        assertTrue(again)
+    }
 }

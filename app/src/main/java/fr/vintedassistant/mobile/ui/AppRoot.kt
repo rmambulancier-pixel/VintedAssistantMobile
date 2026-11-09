@@ -101,6 +101,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
     val exportReport by vm.exportReport.collectAsStateWithLifecycle()
     val stock by vm.stock.collectAsStateWithLifecycle()
     val findings by vm.findings.collectAsStateWithLifecycle()
+    val orders by vm.orders.collectAsStateWithLifecycle()
     // Fiche créée par « Remettre en vente » : que faire ensuite ?
     var created by rememberSaveable { mutableStateOf<Long?>(null) }
 
@@ -320,6 +321,8 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                     modifier = modifier,
                     onStatus = vm::setShippingStatus,
                     onAttachLabel = vm::attachLabel,
+                    orders = orders,
+                    onAttachPurchase = vm::attachSaleToPurchase,
                 )
                 Tab.ASSISTANT -> AssistantScreen(
                     articles = articles,

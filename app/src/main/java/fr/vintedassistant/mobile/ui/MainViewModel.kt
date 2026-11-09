@@ -142,6 +142,14 @@ class MainViewModel(
         _message.value = "Prix mis à jour ici. Pense à le modifier aussi dans l'annonce Vinted."
     }
 
+    val orders: StateFlow<List<fr.vintedassistant.mobile.domain.PurchaseOrder>> =
+        purchases.orders.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun attachSaleToPurchase(saleId: Long, itemId: Long) = launchSafely("Rattachement impossible.") {
+        purchases.attachSaleToPurchase(saleId, itemId)
+        _message.value = "Vente rattachée : fiche « Vendu » créée pour la pièce envoyée, coût d'achat repris."
+    }
+
     fun setShippingStatus(saleId: Long, status: ShippingStatus) =
         launchSafely("Impossible de changer le statut d'expédition.") { repository.setShippingStatus(saleId, status) }
 

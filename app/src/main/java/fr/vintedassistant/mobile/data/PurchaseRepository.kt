@@ -169,6 +169,36 @@ class PurchaseRepository(
         saleDao.syncCostForImported(articleId, item.landedUnitCents)
     }
 
+    /**
+     * Vente sans fiche (lot Vinted, pièce envoyée à la place d'une autre…) : crée une fiche « Vendu » pour la
+     * pièce réellement sortie du stock, rattachée à son achat, et lui associe la vente avec ce coût d'achat.
+     * Le titre de la vente ne change pas ; la pièce envoyée est notée dans la vente.
+     */
+    suspend fun attachSaleToPurchase(saleId: Long, itemId: Long): Long = db.withTransaction {
+        val sale = saleDao.getById(saleId) ?: throw IllegalStateException("Vente introuvable")
+        check(sale.articleId == null) { "Cette vente a déjà une fiche" }
+        val item = dao.getItem(itemId) ?: throw IllegalStateException("Produit introuvable")
+        val linked = articleDao.linkedToPurchase(itemId).size
+        check(linked < item.quantity) { "Toutes les pièces de ce produit sont déjà rattachées" }
+        val now = clock()
+        val id = articleDao.insert(
+            ArticleEntity(
+                title = item.name.take(fr.vintedassistant.mobile.domain.Article.TITLE_MAX_LENGTH),
+                costCents = item.landedUnitCents,
+                priceCents = sale.salePriceCents,
+                status = ArticleStatus.SOLD.label,
+                createdAt = sale.soldAt,
+                updatedAt = now,
+                category = sale.category,
+                firstPublishedAt = sale.listedAt,
+                purchaseItemId = itemId,
+            ),
+        )
+        val note = "Pièce envoyée : ${item.name.take(80)}"
+        saleDao.update(sale.copy(articleId = id, costCents = item.landedUnitCents, notes = listOf(sale.notes, note).filter { it.isNotBlank() }.joinToString("\n")))
+        id
+    }
+
     /** Détache l'article ; son coût d'achat est conservé (modifiable à la main). */
     suspend fun unlink(articleId: Long) {
         val article = articleDao.getById(articleId) ?: return
