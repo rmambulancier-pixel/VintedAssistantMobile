@@ -81,6 +81,8 @@ class StockActions(
     val link: (article: Article, lot: StockLot) -> Unit,
     /** La commande [orderId] est arrivée : ses pièces deviennent vendables. */
     val markReceived: (orderId: Long) -> Unit,
+    /** Mise en vente express de toutes les pièces reçues sans fiche. */
+    val expressAll: () -> Unit = {},
 )
 
 @Composable
@@ -174,6 +176,18 @@ fun StockScreen(
         fun matches(vararg texts: String) = q.isEmpty() || texts.any { StockLedger.normalize(it).contains(q) }
 
         if (view == StockView.NOT_LISTED) {
+            if (stock.notListed > 0) {
+                item {
+                    Button(onClick = actions.expressAll, modifier = Modifier.fillMaxWidth()) {
+                        Text("Tout mettre en vente (${stock.products.count { it.notListed > 0 }} bijou(x))")
+                    }
+                    Text(
+                        "Une fiche par bijou : texte et prix repris d'une annonce du même modèle s'il y en a une, " +
+                            "sinon rédigés pour toi. Tu ajoutes les photos du vrai bijou, puis tout part dans Vinted intégré.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
             val shown = stock.products
                 .filter { (it.notListed > 0 || it.inTransit > 0) && matches(it.name, it.template?.title.orEmpty()) }
                 .sortedBy { if (it.notListed > 0) 0 else 1 }

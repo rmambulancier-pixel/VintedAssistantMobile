@@ -311,6 +311,14 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   de port sont répartis à nouveau sur les seules pièces reçues (coût des fiches en stock mis à jour, ventes passées
   inchangées) ; le signalement survit à une nouvelle lecture de la commande. CI : schémas Room publiés en artefact.
 
+- **0.20** : mise en vente express (`domain/ExpressListing`, `ui/screens/ExpressScreen`). Stock, « Pas encore en
+  vente », « Tout mettre en vente » : une fiche brouillon par bijou qui a des pièces reçues sans fiche. Copie d'une
+  fiche du même bijou (photos comprises) ou d'une autre couleur du même modèle (photos retirées, couleur vidée) ;
+  sans modèle, fiche partie du nom fournisseur, sans photo fournisseur, catégorie déduite, prix médian des ventes
+  proches. Écran pièce par pièce : appareil photo ou galerie, « Améliorer la 1re », titre, prix, rédaction par l'IA.
+  Les fiches prêtes (photos et prix) partent ensuite dans Vinted intégré en série : l'utilisateur touche
+  « Ajouter », l'annonce est reliée à la fiche, puis la suivante. Photo principale décalée seulement en republication.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

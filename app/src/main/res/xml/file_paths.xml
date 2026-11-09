@@ -7,4 +7,6 @@
     <cache-path name="exports" path="exports/" />
     <!-- Sauvegarde complète envoyée à la demande (Drive, e-mail…). -->
     <cache-path name="backups" path="backups/" />
+    <!-- Photos prises avec l'appareil photo (mise en vente express), supprimées après import. -->
+    <cache-path name="camera" path="camera/" />
 </paths>

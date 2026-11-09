@@ -663,4 +663,27 @@ class RepositoryTest {
         purchases.saveOrder("Nihaojewelry", order, downloadImages = false, received = true)
         assertEquals(1, purchases.orders.first().single().items.first { it.sku == "NH1" }.missing)
     }
+
+    @Test
+    fun expressDraftsCopyTemplateOrStartFromSupplierName() = runBlocking {
+        val purchases = PurchaseRepository(db, photoStore = null, clock = { now })
+        val order = ParsedOrder("NH-E", null,
+            listOf(ParsedOrderLine("Bracelet cœur (Vert)", 100, 2, "", "", sku = "NH1"), ParsedOrderLine("Collier tennis strass doré", 100, 1, "", "", sku = "NH3")),
+            shippingCents = 0, feesCents = 0, totalCents = null, url = "")
+        purchases.saveOrder("Nihaojewelry", order, downloadImages = false, received = true)
+        val items = purchases.orders.first().single().items
+        val templateId = repo.create(fields(price = 700).copy(title = "Bracelet cœur vert", description = "Joli bracelet"))
+        purchases.link(templateId, items.first { it.sku == "NH1" }.id)
+        val stock = StockLedger.build(purchases.orders.first(), repo.articles.first())
+        val plan = fr.vintedassistant.mobile.domain.ExpressListing.plan(stock)
+        assertEquals(2, plan.size)
+        val sales = listOf(fr.vintedassistant.mobile.domain.Sale(1, null, "Collier tennis strass argenté", "Colliers", 800, 0, 0, 0, null))
+        val ids = plan.map { purchases.prepareExpress(it, sales) }
+        val copy = repo.getArticle(ids[plan.indexOfFirst { it.templateId != null }])!!
+        assertEquals("Joli bracelet", copy.description)
+        assertEquals(ArticleStatus.DRAFT, copy.status)
+        val fresh = repo.getArticle(ids[plan.indexOfFirst { it.templateId == null }])!!
+        assertEquals(800L, fresh.priceCents)
+        assertEquals("Colliers", fresh.category)
+    }
 }

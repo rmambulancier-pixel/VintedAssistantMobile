@@ -51,6 +51,7 @@ import fr.vintedassistant.mobile.ui.editor.ArticleEditorScreen
 import fr.vintedassistant.mobile.ui.screens.ActivityScreen
 import fr.vintedassistant.mobile.ui.screens.AssistantScreen
 import fr.vintedassistant.mobile.ui.screens.DashboardScreen
+import fr.vintedassistant.mobile.ui.screens.ExpressScreen
 import fr.vintedassistant.mobile.ui.screens.RepublishScreen
 import fr.vintedassistant.mobile.ui.screens.SalesScreen
 import fr.vintedassistant.mobile.ui.screens.SettingsScreen
@@ -71,7 +72,7 @@ enum class Tab(val label: String, val icon: ImageVector) {
 /** Écrans affichés par-dessus les onglets. */
 private enum class Overlay(val title: String) {
     NONE(""), SETTINGS("Réglages"), ACTIVITY("Activité Vinted"), VINTED("Vinted intégré (bêta)"),
-    PURCHASES("Achats fournisseur"), SUPPLIER("Nihaojewelry"),
+    PURCHASES("Achats fournisseur"), SUPPLIER("Nihaojewelry"), EXPRESS("Mise en vente express"),
 }
 
 /**
@@ -91,6 +92,8 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
     var vintedArticle by rememberSaveable { mutableStateOf<Long?>(null) }
     // Republication en série : fiches à republier l'une après l'autre dans Vinted intégré.
     var vintedQueue by rememberSaveable { mutableStateOf<ArrayList<Long>>(ArrayList()) }
+    // Mise en vente express : fiches préparées à compléter (photos, prix) avant publication.
+    var expressIds by rememberSaveable { mutableStateOf<ArrayList<Long>>(ArrayList()) }
 
     val settings by vm.settings.collectAsStateWithLifecycle()
     val articles by vm.articles.collectAsStateWithLifecycle()
@@ -268,6 +271,14 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                 onOpenArticle = { close(); openEditor(it) },
                 onMessage = vm::show,
             )
+            Overlay.EXPRESS -> ExpressScreen(
+                ids = expressIds,
+                articles = articles,
+                aiEnabled = settings.aiEnabled,
+                modifier = modifier,
+                onPublish = { ids -> vintedQueue = ArrayList(ids); vintedArticle = ids.firstOrNull(); overlayIndex = Overlay.VINTED.ordinal },
+                onOpenArticle = { openEditor(it) },
+            )
             Overlay.SUPPLIER -> SupplierWebScreen(modifier = modifier, onClose = { overlayIndex = Overlay.PURCHASES.ordinal })
             Overlay.VINTED -> VintedWebScreen(
                 articles = articles,
@@ -307,6 +318,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                         draftFromPurchase = { itemId -> vm.draftFromPurchase(itemId, ::openEditor) },
                         link = { a, lot -> vm.linkToPurchase(a.id, lot.itemId, a.title, lot.landedUnitCents) },
                         markReceived = { orderId -> vm.setOrderReceived(orderId, true) },
+                        expressAll = { vm.startExpress { ids -> expressIds = ArrayList(ids); overlayIndex = Overlay.EXPRESS.ordinal } },
                     ),
                 )
                 Tab.REPUBLISH -> RepublishScreen(

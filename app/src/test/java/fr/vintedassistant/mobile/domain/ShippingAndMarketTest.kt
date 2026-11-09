@@ -138,3 +138,35 @@ class MissingPiecesTest {
         org.junit.Assert.assertEquals(0, items[0].delivered)
     }
 }
+
+class ExpressListingTest {
+    private fun item(id: Long, name: String, qty: Int, sku: String) = PurchaseItem(id, 1, name, null, 0, qty, 40, 0, "", sku)
+
+    @Test
+    fun planUsesSameModelOrFamilyTemplate() {
+        val sold = Article(5, "Bracelet cœur vert émeraude", 40, 700, ArticleStatus.SOLD, 0, description = "Joli", purchaseItemId = 1)
+        val order = PurchaseOrder(1, "Nihao", "R", 0, 0, 0, 0, listOf(
+            item(1, "Bracelet femme cœur (Vert)", 2, "NH1"),
+            item(2, "Bracelet femme cœur (Rose)", 1, "NH2"),
+            item(3, "Collier tennis", 1, "NH3"),
+        ))
+        val plan = ExpressListing.plan(StockLedger.build(listOf(order), listOf(sold)))
+        org.junit.Assert.assertEquals(3, plan.size)
+        val vert = plan.first { it.itemId == 1L }
+        org.junit.Assert.assertEquals(5L, vert.templateId); org.junit.Assert.assertTrue(vert.sameVariant)
+        val rose = plan.first { it.itemId == 2L }
+        org.junit.Assert.assertEquals(5L, rose.templateId); org.junit.Assert.assertFalse(rose.sameVariant)
+        org.junit.Assert.assertNull(plan.first { it.itemId == 3L }.templateId)
+        org.junit.Assert.assertEquals("Rose", ExpressListing.variant("Bracelet femme cœur (Rose)"))
+    }
+
+    @Test
+    fun priceFromSimilarSales() {
+        val sales = listOf(
+            Sale(1, null, "Collier tennis strass argenté", "Colliers", 750, 0, 0, 0, null),
+            Sale(2, null, "Collier tennis strass 45 cm", "Colliers", 900, 0, 0, 0, null),
+        )
+        org.junit.Assert.assertEquals(800L, ExpressListing.suggestPrice("Collier tennis strass doré", sales))
+        org.junit.Assert.assertNull(ExpressListing.suggestPrice("Bague argent", sales))
+    }
+}

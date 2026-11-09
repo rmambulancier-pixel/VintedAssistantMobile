@@ -243,11 +243,11 @@ class PurchaseRepository(
     suspend fun linkedArticles(itemId: Long): List<Article> = articleDao.linkedToPurchase(itemId).map { it.toDomain() }
 
     /** Crée une fiche brouillon depuis un produit acheté : nom, photo du fournisseur, coût de revient. Prix à fixer. */
-    suspend fun createDraft(itemId: Long): Long {
+    suspend fun createDraft(itemId: Long, supplierPhoto: Boolean = true): Long {
         val item = dao.getItem(itemId) ?: throw IllegalStateException("Produit introuvable")
         check(dao.getOrder(item.orderId)?.received != false) { "Commande pas encore reçue" }
         val now = clock()
-        val photo = item.imageFile?.let { source ->
+        val photo = item.imageFile?.takeIf { supplierPhoto }?.let { source ->
             val store = photoStore ?: return@let null
             try {
                 val bytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.file(source).readBytes() }
@@ -316,6 +316,35 @@ class PurchaseRepository(
             copies.forEachIndexed { i, name -> photoDao.insert(PhotoEntity(articleId = id, fileName = name, position = i, createdAt = now)) }
             id
         }
+    }
+
+    /**
+     * Mise en vente express : fiche brouillon pour [item]. Copie du modèle s'il existe (sans ses photos si c'est
+     * une autre couleur : Vinted veut des photos de l'objet vendu), sinon fiche vierge sans la photo du fournisseur,
+     * avec catégorie déduite et prix conseillé d'après les ventes.
+     */
+    suspend fun prepareExpress(item: fr.vintedassistant.mobile.domain.ExpressListing.Item, sales: List<fr.vintedassistant.mobile.domain.Sale>): Long {
+        val templateId = item.templateId
+        if (templateId != null) {
+            val id = duplicateForSale(templateId, item.itemId)
+            if (!item.sameVariant) {
+                photoDao.forArticle(id).forEach { photoStore?.delete(it.fileName) }
+                photoDao.deleteForArticle(id)
+                articleDao.getById(id)?.let { articleDao.update(it.copy(color = "", updatedAt = clock())) }
+            }
+            return id
+        }
+        val id = createDraft(item.itemId, supplierPhoto = false)
+        articleDao.getById(id)?.let { a ->
+            articleDao.update(
+                a.copy(
+                    priceCents = fr.vintedassistant.mobile.domain.ExpressListing.suggestPrice(a.title, sales) ?: 0,
+                    category = fr.vintedassistant.mobile.domain.JewelryCategory.guess(a.title) ?: "",
+                    updatedAt = clock(),
+                ),
+            )
+        }
+        return id
     }
 
     /** Supprime une commande. Les articles rattachés gardent leur coût d'achat. */

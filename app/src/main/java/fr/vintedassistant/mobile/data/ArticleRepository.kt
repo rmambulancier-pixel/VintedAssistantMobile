@@ -655,6 +655,20 @@ class ArticleRepository(
 
     // ---------- Vinted : lien, notifications, import ----------
 
+    /** Retouche rapide d'une fiche (mise en vente express) : titre, prix, texte. */
+    suspend fun quickEdit(id: Long, title: String, priceCents: Long, description: String? = null, keywords: String? = null) {
+        val a = articleDao.getById(id) ?: return
+        articleDao.update(
+            a.copy(
+                title = title.trim().take(Article.TITLE_MAX_LENGTH).ifBlank { a.title },
+                priceCents = priceCents.coerceAtLeast(0),
+                description = description ?: a.description,
+                keywords = keywords ?: a.keywords,
+                updatedAt = clock(),
+            ),
+        )
+    }
+
     suspend fun setVintedUrl(id: Long, url: String) {
         val current = articleDao.getById(id) ?: return
         articleDao.update(current.copy(vintedUrl = url, updatedAt = clock()))

@@ -249,10 +249,11 @@ fun VintedWebScreen(
         sawOld = false
         phase = SeriesPhase.FILLING
         scope.launch {
-            fillListing(a, rotatePhotos = true)
+            // Photo principale décalée seulement pour une republication ; une première mise en vente garde l'ordre choisi.
+            fillListing(a, rotatePhotos = a.firstPublishedAt != null)
             phase = SeriesPhase.WAIT_PUBLISH
             status = "Annonce ${queueIndex + 1} sur ${queue.size} : " + (status ?: "") +
-                " Touche « Ajouter » dans Vinted : l'application ouvrira ensuite l'ancienne annonce pour que tu la supprimes."
+                (if (a.firstPublishedAt == null) " Vérifie, puis touche « Ajouter » dans Vinted." else " Touche « Ajouter » dans Vinted : l'application ouvrira ensuite l'ancienne annonce pour que tu la supprimes.")
         }
     }
 
@@ -271,7 +272,8 @@ fun VintedWebScreen(
         onLinkArticle(a.id, url)
         val old = oldUrl
         if (old.isBlank() || VintedLinks.itemId(old) == null) {
-            status = "Nouvelle annonce enregistrée. Pas d'ancienne annonce connue : supprime-la toi-même si elle existe."
+            status = if (a.firstPublishedAt == null) "Annonce publiée et reliée à sa fiche. Suivante…"
+                else "Nouvelle annonce enregistrée. Pas d'ancienne annonce connue : supprime-la toi-même si elle existe."
             next()
         } else {
             phase = SeriesPhase.WAIT_DELETE

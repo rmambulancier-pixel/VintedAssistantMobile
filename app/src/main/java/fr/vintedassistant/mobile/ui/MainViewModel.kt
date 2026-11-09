@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -244,6 +245,19 @@ class MainViewModel(
         launchSafely("Remise en vente impossible : plus de pièce libre pour ce bijou, ou fiche introuvable.") {
             onCreated(purchases.duplicateForSale(templateId, itemId))
         }
+
+    /** Mise en vente express : une fiche brouillon par bijou en stock jamais mis en vente. */
+    fun startExpress(onReady: (List<Long>) -> Unit) = launchSafely("Préparation impossible.") {
+        val stock = StockLedger.build(purchases.orders.first(), repository.articles.first())
+        val plan = fr.vintedassistant.mobile.domain.ExpressListing.plan(stock)
+        if (plan.isEmpty()) {
+            _message.value = "Aucune pièce reçue sans fiche."
+            return@launchSafely
+        }
+        val sales = repository.sales.first()
+        val ids = plan.map { purchases.prepareExpress(it, sales) }
+        onReady(ids)
+    }
 
     /** Fiche brouillon vierge depuis un produit acheté (photo et nom du fournisseur). */
     fun draftFromPurchase(itemId: Long, onCreated: (Long) -> Unit) =
