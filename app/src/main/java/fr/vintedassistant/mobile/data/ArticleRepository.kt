@@ -671,6 +671,22 @@ class ArticleRepository(
      */
     suspend fun handleNotification(key: String, postedAt: Long, title: String, text: String): AutoSale? {
         if (!recordNotification(key, postedAt, title, text)) return null
+        return saleFromNotice(key, title, text)
+    }
+
+    data class Handled(val sale: AutoSale?, val reply: fr.vintedassistant.mobile.domain.QuickReply.Prepared?)
+
+    /** Notification Vinted reçue : vente enregistrée, ou réponse préparée pour un message, une offre, un favori. */
+    suspend fun processNotification(key: String, postedAt: Long, title: String, text: String, priceDropPercent: Int): Handled {
+        if (!recordNotification(key, postedAt, title, text)) return Handled(null, null)
+        val kind = VintedNotificationClassifier.classify(title, text)
+        if (kind == fr.vintedassistant.mobile.domain.VintedEventKind.SALE) return Handled(saleFromNotice(key, title, text), null)
+        val article = VintedNotificationClassifier.matchArticle("$title $text", getAllArticles().filter { it.status.inStock })
+            ?: return Handled(null, null)
+        return Handled(null, fr.vintedassistant.mobile.domain.QuickReply.prepare(kind, title, text, article, priceDropPercent))
+    }
+
+    private suspend fun saleFromNotice(key: String, title: String, text: String): AutoSale? {
         if (VintedNotificationClassifier.classify(title, text) != fr.vintedassistant.mobile.domain.VintedEventKind.SALE) return null
         val content = "$title $text"
         val article = VintedNotificationClassifier.soldArticle(content, getAllArticles().filter { it.status.inStock }) ?: return null

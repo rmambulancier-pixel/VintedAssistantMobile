@@ -294,6 +294,13 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   Boutons de secours « Elle est en ligne », « Suivante », « Arrêter ». Aucun délai simulé, aucune action à la
   place de l'utilisateur sur « Ajouter » et « Supprimer » : rien qui cherche à tromper la détection de Vinted.
 
+- **0.18** : réponses préparées (`domain/QuickReply`, `notifications/ReplyNotifier`). Notification Vinted de message,
+  d'offre ou de favori sur un article reconnu : notification « Réponse prête » avec le texte (modèle de réponse,
+  conseil d'offre selon le plancher, offre au favori selon la baisse réglée), boutons « Copier » et « Ouvrir Vinted ».
+  Envoi toujours fait par l'utilisateur. Un message sans titre d'article reconnaissable ne donne pas de réponse.
+  Série de republication : les fiches sans lien vers l'annonce actuelle sont écartées (l'ancienne ne pourrait pas
+  être supprimée, doublon garanti).
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

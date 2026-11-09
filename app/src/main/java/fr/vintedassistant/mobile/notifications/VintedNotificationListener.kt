@@ -35,10 +35,13 @@ class VintedNotificationListener : NotificationListenerService() {
             ?.toString().orEmpty()
         if (title.isBlank() && text.isBlank()) return
         val key = "${sbn.key}|${sbn.postTime}"
-        val repository = (applicationContext as VintedBoostApp).container.articleRepository
+        val container = (applicationContext as VintedBoostApp).container
+        val repository = container.articleRepository
         scope.launch {
             try {
-                repository.handleNotification(key, sbn.postTime, title, text)?.let { SaleNotifier.notify(applicationContext, it) }
+                val handled = repository.processNotification(key, sbn.postTime, title, text, container.settingsStore.current().priceDropPercent)
+                handled.sale?.let { SaleNotifier.notify(applicationContext, it) }
+                handled.reply?.let { ReplyNotifier.notify(applicationContext, it) }
             } catch (e: Exception) {
                 // Une notification perdue n'est pas grave ; on ne fait jamais planter le service.
             }

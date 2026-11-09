@@ -147,3 +147,31 @@ object ReplyTemplates {
         }
     }
 }
+
+/**
+ * Réponse préparée dès qu'une notification Vinted arrive (message, offre, favori) pour un article reconnu.
+ * Rien n'est envoyé : le texte est proposé dans une notification, à copier et coller dans Vinted.
+ */
+object QuickReply {
+    data class Prepared(val articleId: Long, val kind: VintedEventKind, val heading: String, val message: String)
+
+    fun prepare(kind: VintedEventKind, title: String, text: String, article: Article, priceDropPercent: Int): Prepared? {
+        val body = text.trim().let { t -> val p = title.trim(); if (p.isNotEmpty() && t.startsWith("$p:")) t.removePrefix("$p:").trim() else t }
+        return when (kind) {
+            VintedEventKind.MESSAGE -> Prepared(article.id, kind, "Réponse prête : ${article.title.take(40)}", ReplyTemplates.reply(body, article))
+            VintedEventKind.OFFER -> {
+                val offer = VintedNotificationClassifier.amountCents(body) ?: return null
+                val advice = Negotiator.advise(article.priceCents, article.floorPriceCents, offer)
+                val head = if (advice.decision == OfferDecision.ACCEPT) "Offre ${Money.formatEuros(offer)} : à accepter"
+                    else "Offre ${Money.formatEuros(offer)} : contre-proposer ${Money.formatEuros(advice.amountCents)}"
+                Prepared(article.id, kind, head, advice.messageToBuyer)
+            }
+            VintedEventKind.FAVORITE -> {
+                val price = PriceAdvisor.suggestDrop(article.priceCents, article.floorPriceCents, priceDropPercent)
+                val head = "Favori : ${article.title.take(40)}" + (price?.let { " (offre conseillée ${Money.formatEuros(it)})" } ?: "")
+                Prepared(article.id, kind, head, ReplyTemplates.favoriteMessage(article, price))
+            }
+            else -> null
+        }
+    }
+}

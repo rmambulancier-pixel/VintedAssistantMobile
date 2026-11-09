@@ -76,8 +76,18 @@ fun RepublishScreen(
         item { SectionTitle("Plan du jour") }
         if (settings.betaVintedAccepted && plan.today.isNotEmpty()) {
             item {
-                Button(onClick = { onRepublishAll(plan.today.map { it.id }) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Tout republier en série (${plan.today.size})")
+                // Sans lien vers l'ancienne annonce, elle ne pourrait pas être supprimée : doublon garanti. Écartée.
+                val ready = plan.today.filter { it.vintedUrl.isNotBlank() }
+                Button(onClick = { onRepublishAll(ready.map { it.id }) }, enabled = ready.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
+                    Text("Tout republier en série (${ready.size})")
+                }
+                if (ready.size < plan.today.size) {
+                    Text(
+                        "${plan.today.size - ready.size} annonce(s) écartée(s) : fiche sans lien vers l'annonce Vinted actuelle " +
+                            "(ouvre-la dans Vinted intégré et touche « Lier cette page »).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
                 Text(
                     "L'application ouvre « Vendre » et remplit chaque annonce (photo principale changée). Tu touches « Ajouter », " +

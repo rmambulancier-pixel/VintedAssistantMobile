@@ -103,3 +103,23 @@ class AuditSalesTest {
         org.junit.Assert.assertTrue(titles.any { it.startsWith("Ventes sans coût") })
     }
 }
+
+class QuickReplyTest {
+    private val a = Article(7, "Bracelet trèfle vert", 37, 800, ArticleStatus.ONLINE, 0, firstPublishedAt = 0)
+
+    @Test
+    fun offerBelowFloorGetsCounterOffer() {
+        val p = QuickReply.prepare(VintedEventKind.OFFER, "lea", "lea: Je te propose 5 € ?", a, 10)!!
+        org.junit.Assert.assertTrue(p.heading.startsWith("Offre ${Money.formatEuros(500)} : contre-proposer"))
+        org.junit.Assert.assertTrue(p.message.contains("Je ne peux pas descendre"))
+    }
+
+    @Test
+    fun messageAndFavoriteAreDrafted() {
+        val m = QuickReply.prepare(VintedEventKind.MESSAGE, "lea", "lea: Il est toujours dispo ?", a, 10)!!
+        org.junit.Assert.assertTrue(m.message.contains("toujours disponible"))
+        val f = QuickReply.prepare(VintedEventKind.FAVORITE, "Vinted", "lea a ajouté Bracelet trèfle vert à ses favoris", a, 10)!!
+        org.junit.Assert.assertTrue(f.heading.contains(Money.formatEuros(700)))
+        org.junit.Assert.assertNull(QuickReply.prepare(VintedEventKind.OTHER, "", "", a, 10))
+    }
+}
