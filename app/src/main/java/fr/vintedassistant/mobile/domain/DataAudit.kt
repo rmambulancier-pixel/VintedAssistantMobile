@@ -36,12 +36,20 @@ object DataAudit {
         if (onlineNoLink.isNotEmpty()) {
             out += Finding("Fiches « En ligne » sans lien vers l'annonce Vinted", onlineNoLink.map { "#${it.id} « ${it.title.take(60)} »" })
         }
+        val zeroCostSales = sales.filter { it.counted && it.costCents == 0L && it.articleId != null }
+        if (zeroCostSales.isNotEmpty()) {
+            out += Finding("Ventes sans coût d'achat (bénéfice surestimé)", zeroCostSales.map { "fiche #${it.articleId} « ${it.title.take(60)} » ${Money.formatEuros(it.salePriceCents)}" })
+        }
         val noCost = articles.filter { it.costCents == 0L && it.status != ArticleStatus.WITHDRAWN }
         if (noCost.isNotEmpty()) {
             out += Finding("Fiches sans coût d'achat (marges surestimées)", noCost.map { "#${it.id} « ${it.title.take(60)} » (${it.status.label})" })
         }
         if (stock != null && stock.bought > 0) {
             val byId = articles.associateBy { it.id }
+            val noFiche = sales.filter { it.counted && it.articleId == null }
+            if (noFiche.isNotEmpty()) {
+                out += Finding("Ventes sans fiche (achat et coût inconnus)", noFiche.map { "« ${it.title.take(60)} » ${Money.formatEuros(it.salePriceCents)}" })
+            }
             val orphan = sales.filter { it.counted && it.articleId != null && byId[it.articleId]?.purchaseItemId == null }
             if (orphan.isNotEmpty()) {
                 out += Finding("Ventes sans achat rattaché (coût d'achat à vérifier)", orphan.map { "fiche #${it.articleId} « ${it.title.take(60)} » ${Money.formatEuros(it.salePriceCents)}" })

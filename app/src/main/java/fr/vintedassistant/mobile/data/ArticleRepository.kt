@@ -571,6 +571,12 @@ class ArticleRepository(
                 val guess = fr.vintedassistant.mobile.domain.JewelryCategory.guess(a.title) ?: continue
                 articleDao.update(a.copy(category = guess))
             }
+            // Vente enregistrée avant le rattachement de la fiche à son achat : coût repris de la fiche.
+            for (s in saleDao.getAll()) {
+                if (s.costCents != 0L) continue
+                val cost = s.articleId?.let { articleDao.getById(it)?.costCents } ?: continue
+                if (cost > 0) saleDao.update(s.copy(costCents = cost))
+            }
             for (s in saleDao.getAll()) {
                 if (s.category.isNotBlank()) continue
                 val fromArticle = s.articleId?.let { articleDao.getById(it)?.category }?.takeIf { it.isNotBlank() }

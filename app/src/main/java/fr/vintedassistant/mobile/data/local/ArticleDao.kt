@@ -92,7 +92,7 @@ interface SaleDao {
     suspend fun articleIdsWithSales(): List<Long>
 
     /** Garde le coût des ventes importées (date inconnue) aligné sur la fiche. */
-    @Query("UPDATE sales SET cost_cents = :costCents WHERE article_id = :articleId AND date_known = 0")
+    @Query("UPDATE sales SET cost_cents = :costCents WHERE article_id = :articleId AND (date_known = 0 OR cost_cents = 0)")
     suspend fun syncCostForImported(articleId: Long, costCents: Long): Int
 
     @Query("UPDATE sales SET article_id = NULL WHERE article_id = :articleId")

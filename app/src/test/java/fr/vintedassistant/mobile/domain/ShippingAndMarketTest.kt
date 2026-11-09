@@ -89,3 +89,17 @@ class ShippingAndMarketTest {
         assertNull(PriceAdvisor.market(art("Collier trèfle doré", 1500), sales))
     }
 }
+
+class AuditSalesTest {
+    @Test
+    fun salesWithoutFicheOrCostAreReported() {
+        val a = Article(1, "Collier tennis", 37, 800, ArticleStatus.SOLD, 0, purchaseItemId = 9)
+        val sales = listOf(
+            Sale(1, 1, "Collier tennis", "", 800, 0, 0, 0, null),
+            Sale(2, null, "Pendentif croix", "", 280, 0, 0, 0, null),
+        )
+        val stock = StockLedger.build(emptyList(), listOf(a))
+        val titles = DataAudit.findings(listOf(a), sales, stock).map { it.title }
+        org.junit.Assert.assertTrue(titles.any { it.startsWith("Ventes sans coût") })
+    }
+}

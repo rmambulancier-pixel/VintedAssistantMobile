@@ -270,6 +270,10 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   Le script attend maintenant les lignes (5 s) puis les résultats de la recherche (6 s), et chaque niveau
   (3 s). En cas d'échec, le diagnostic donne le nombre de lignes, le texte visible de la boîte et ses classes.
 
+- **0.16.3** : ventes enregistrées avant le rattachement de leur fiche à un achat : coût repris de la fiche
+  (au démarrage et à chaque rattachement, pour toute vente à coût nul). « À vérifier » signale aussi les
+  ventes sans coût et les ventes sans fiche.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des
