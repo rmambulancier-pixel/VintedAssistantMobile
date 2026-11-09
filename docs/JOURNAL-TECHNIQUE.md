@@ -278,6 +278,10 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   « Sans marque ») : « Vintage » avait donné « Vintage Love », une vraie marque. Les menus attendent leurs options
   (5 s à l'ouverture, 4 s après une recherche) : Couleur et Matériau étaient lus avant d'être chargés.
 
+- **0.16.5** : après « Neuf sans étiquette », Vinted ouvre une fenêtre d'information (« L'article ne doit jamais
+  avoir été utilisé… ») qui masquait Couleur et Matériau. Toute fenêtre sans options est refermée (bouton
+  « J'ai compris », « OK »… ou fermeture) avant et après chaque champ ; le bouton touché est noté dans le détail.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

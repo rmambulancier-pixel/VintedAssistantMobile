@@ -137,7 +137,7 @@ object VintedPageScripts {
           const norm=s=>(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
           function setVal(e,v){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,v);
             e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}
-          const dialog=()=>document.querySelector('.ReactModal__Content');
+          const dialog=()=>{const all=document.querySelectorAll('.ReactModal__Content');return all.length?all[all.length-1]:null;};
           const saveBtn=()=>document.querySelector('[data-testid="input-dropdown-save-button"]')||
             Array.from((dialog()||document).querySelectorAll('button')).find(b=>/^(fait|valider|ok)$/i.test((b.innerText||'').trim()));
           const canSave=b=>b&&!b.disabled&&!/disabled/.test(b.className);
@@ -151,9 +151,22 @@ object VintedPageScripts {
             return Array.from(d.querySelectorAll('.web_ui__Cell__clickable, [role="option"], [role="radio"], [role="checkbox"], label'))
               .filter(e=>!e.querySelector('.web_ui__Cell__clickable'))
               .map(e=>({e,t:norm(e.innerText||e.textContent)})).filter(x=>x.t&&x.t.length<160);};
+          // Fenêtre d'information de Vinted (ex. après « Neuf sans étiquette » : « L'article ne doit jamais avoir
+          // été utilisé… ») : sans options à cocher, elle bloque les menus suivants. On la referme.
+          async function dismissInfo(){
+            for(let k=0;k<3;k++){
+              const d=dialog();if(!d||options().length)return;
+              const btns=Array.from(d.querySelectorAll('button')).filter(b=>!b.disabled);
+              const b=btns.find(x=>/compris|d.accord|^ok$|continuer|confirmer|fermer|valider/i.test((x.innerText||x.getAttribute('aria-label')||'').trim()))||closeBtn()||btns[btns.length-1];
+              if(!b)return;
+              R.dismissed=(R.dismissed||[]).concat([(b.innerText||b.getAttribute('aria-label')||'bouton').trim().slice(0,40)]);
+              b.click();await sleep(600);
+            }
+          }
           (async()=>{
             try{
               for(const f of fields){
+                await dismissInfo();
                 const out={field:f.name,status:'',picked:[],seen:[]};R.fields.push(out);
                 const inp=fieldInput(new RegExp(f.label));
                 if(!inp){out.status='absent';continue;}
@@ -177,7 +190,8 @@ object VintedPageScripts {
                 }
                 const b=saveBtn();
                 if(out.picked.length&&canSave(b)){b.click();await sleep(600);}
-                if(dialog()){const c=closeBtn();if(c){c.click();await sleep(400);}}
+                if(dialog()&&options().length){const c=closeBtn();if(c){c.click();await sleep(400);}}
+                await sleep(300);await dismissInfo();
                 if(!out.seen.length){const dd=dialog();out.dialogText=dd?(dd.innerText||'').replace(/\s+/g,' ').slice(0,200):'(boîte fermée)';}
                 out.status=(inp.value||'').trim()?'rempli':(out.picked.length?'choisi, à vérifier':'non trouvé');
                 if((inp.value||'').trim())out.picked=[inp.value];
