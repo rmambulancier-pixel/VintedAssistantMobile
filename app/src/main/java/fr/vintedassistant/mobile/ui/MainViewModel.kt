@@ -87,6 +87,11 @@ class MainViewModel(
             fr.vintedassistant.mobile.domain.DataAudit.findings(a, s, st)
         }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** Bijoux à racheter : vendus au moins deux fois, presque plus de stock. */
+    val restock: StateFlow<List<fr.vintedassistant.mobile.domain.Restock.Advice>> =
+        combine(stock, repository.sales) { st, s -> if (st == null) emptyList() else fr.vintedassistant.mobile.domain.Restock.advise(st, s) }
+            .flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val republishPlan: StateFlow<RepublishPlan?> =
         combine(repository.articles, repository.republishedTimestamps, settingsStore.settings, clock) { a, t, st, now ->
             RepublishPlanner.plan(a, t, st.republish, now)

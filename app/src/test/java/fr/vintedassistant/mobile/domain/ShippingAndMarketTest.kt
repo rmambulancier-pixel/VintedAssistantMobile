@@ -170,3 +170,29 @@ class ExpressListingTest {
         org.junit.Assert.assertNull(ExpressListing.suggestPrice("Bague argent", sales))
     }
 }
+
+class RestockTest {
+    @Test
+    fun soldOutBestSellersAreAdvised() {
+        val items = listOf(PurchaseItem(1, 1, "Collier tennis", null, 0, 3, 70, 3, "", "NH1"), PurchaseItem(2, 1, "Bague", null, 0, 5, 50, 1, "", "NH2"))
+        val order = PurchaseOrder(1, "N", "R", 0, 0, 0, 0, items)
+        val arts = (1L..3L).map { Article(it, "Collier tennis strass", 70, 800, ArticleStatus.SOLD, 0, purchaseItemId = 1) } +
+            Article(9, "Bague", 50, 500, ArticleStatus.SOLD, 0, purchaseItemId = 2)
+        val sales = (1L..3L).map { Sale(it, it, "Collier tennis strass", "", 800, 70, 0, 3 * DAY_MS, 0) } + Sale(9, 9, "Bague", "", 500, 50, 0, 0, null)
+        val advice = Restock.advise(StockLedger.build(listOf(order), arts), sales)
+        org.junit.Assert.assertEquals(1, advice.size)
+        org.junit.Assert.assertEquals(3, advice[0].sold)
+        org.junit.Assert.assertEquals(730L, advice[0].marginCents)
+        org.junit.Assert.assertEquals(3.0, advice[0].averageDays!!, 0.01)
+    }
+
+    @Test
+    fun monthProjection() {
+        val zone = java.time.ZoneId.of("Europe/Paris")
+        fun at(m: Int, d: Int) = java.time.LocalDateTime.of(2026, m, d, 12, 0).atZone(zone).toInstant().toEpochMilli()
+        val sales = listOf(Sale(1, null, "a", "", 1000, 0, 0, at(11, 5), null), Sale(2, null, "b", "", 600, 0, 0, at(10, 20), null))
+        val p = Restock.projection(sales, at(11, 10), zone)
+        org.junit.Assert.assertEquals(3000L, p.projectedCents)
+        org.junit.Assert.assertEquals(600L, p.lastMonthCents)
+    }
+}

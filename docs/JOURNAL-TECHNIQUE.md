@@ -319,6 +319,11 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   Les fiches prêtes (photos et prix) partent ensuite dans Vinted intégré en série : l'utilisateur touche
   « Ajouter », l'annonce est reliée à la fiche, puis la suivante. Photo principale décalée seulement en republication.
 
+- **0.21** : conseiller de réassort (`domain/Restock`). Accueil, « À racheter » : bijoux vendus au moins deux fois
+  dont il reste une pièce au plus (livraison en cours comprise), classés par bénéfice total, avec délai moyen de
+  vente, coût, prix et marge par pièce. Projection du chiffre d'affaires du mois au rythme actuel, comparée au
+  mois précédent.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

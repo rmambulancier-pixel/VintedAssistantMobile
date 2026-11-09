@@ -31,6 +31,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import fr.vintedassistant.mobile.domain.DataAudit
+import fr.vintedassistant.mobile.domain.Restock
+import fr.vintedassistant.mobile.ui.PhotoThumb
 import fr.vintedassistant.mobile.domain.Sale
 import fr.vintedassistant.mobile.domain.ShippingDeadline
 import fr.vintedassistant.mobile.reminders.ShippingReminder
@@ -49,6 +51,8 @@ fun DashboardScreen(
     sales: List<Sale> = emptyList(),
     onOpenSales: () -> Unit = {},
     onOpenRepublish: () -> Unit = {},
+    restock: List<Restock.Advice> = emptyList(),
+    onOpenPurchases: () -> Unit = {},
 ) {
     var openFinding by remember { mutableStateOf<String?>(null) }
     val now = System.currentTimeMillis()
@@ -115,6 +119,17 @@ fun DashboardScreen(
                 "Bénéfice net" to Money.formatEuros(stats.totalNetCents),
             )
         }
+        if (stats.monthSalesCount > 0) {
+            item {
+                val p = Restock.projection(sales, now)
+                Text(
+                    "À ce rythme, le mois finira vers ${Money.formatEuros(p.projectedCents)} de chiffre d'affaires" +
+                        (if (p.lastMonthCents > 0) " (mois dernier : ${Money.formatEuros(p.lastMonthCents)})." else "."),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
         if (stats.undatedSalesCount > 0) {
             item {
                 Text(
@@ -139,6 +154,38 @@ fun DashboardScreen(
                     Finance.formatRate(contributionRateBp) + ", modifiable dans les réglages).",
                 style = MaterialTheme.typography.bodySmall,
             )
+        }
+        if (restock.isNotEmpty()) {
+            item { SectionTitle("À racheter (${restock.size})") }
+            item {
+                Text(
+                    "Tes bijoux vendus au moins deux fois et presque épuisés, les plus rentables d'abord.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            items(restock.take(6), key = { "restock-${it.key}" }) { r ->
+                ElevatedCard(Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PhotoThumb(r.imageFile, size = 56.dp)
+                        Column(Modifier.weight(1f)) {
+                            Text(r.title, style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                            Text(
+                                "${r.sold} vendus" + (r.averageDays?.let { " en ${String.format(Locale.FRANCE, "%.0f", it)} j en moyenne" } ?: "") +
+                                    " • reste ${r.remaining}" + if (r.inTransit > 0) " (en livraison)" else "",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                "Acheté ${Money.formatEuros(r.averageCostCents)}, vendu ${Money.formatEuros(r.averagePriceCents)} : " +
+                                    "marge ${Money.formatEuros(r.marginCents)} par pièce" +
+                                    (if (r.multiple >= 2) ", mise ×${String.format(Locale.FRANCE, "%.0f", r.multiple)}" else "") + ".",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+            }
+            item { OutlinedButton(onClick = onOpenPurchases, modifier = Modifier.fillMaxWidth()) { Text("Ouvrir les achats fournisseur") } }
         }
         item { SectionTitle("Stock") }
         item {
