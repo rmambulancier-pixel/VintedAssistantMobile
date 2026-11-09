@@ -38,6 +38,7 @@ import fr.vintedassistant.mobile.reminders.RepublishReminder
 import fr.vintedassistant.mobile.ui.Field
 import fr.vintedassistant.mobile.ui.container
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import fr.vintedassistant.mobile.ui.SectionTitle
 import fr.vintedassistant.mobile.ui.copyToClipboard
 import fr.vintedassistant.mobile.data.importer.ExportReport
@@ -268,6 +269,45 @@ fun SettingsScreen(
         Text(
             "Crée un fichier ZIP avec un rapport lisible (ventes par mois, stock, points à vérifier) et toutes tes " +
                 "fiches, ventes et achats, sans photos, sans pseudos d'acheteurs ni messages. Choisis ensuite où l'envoyer.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+
+        OutlinedButton(
+            onClick = {
+                exportScope.launch {
+                    try {
+                        val c = context.container()
+                        val csv = fr.vintedassistant.mobile.domain.Reports.monthCsv(c.articleRepository.sales.first(), settings.contributionRateBp, System.currentTimeMillis())
+                        val dir = java.io.File(context.cacheDir, "exports").apply { mkdirs() }
+                        val file = java.io.File(dir, "ventes-" + java.time.YearMonth.now() + ".csv")
+                        // BOM : Excel lit ainsi les accents correctement.
+                        file.writeText("\uFEFF" + csv, Charsets.UTF_8)
+                        context.startActivity(c.dataExport.shareIntent(file, "text/csv"))
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        onMessage("Export impossible.")
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Exporter les ventes du mois (CSV)") }
+        Text("Tableau des ventes du mois en cours (date, prix, coût, frais, cotisations, bénéfice), pour tes déclarations.", style = MaterialTheme.typography.bodySmall)
+
+        SectionTitle("Objectif et point du matin")
+        Field(
+            "Objectif de chiffre d'affaires par mois (€), 0 pour aucun",
+            settings.monthlyGoalEuros.toString(),
+            { v -> onUpdate { it.copy(monthlyGoalEuros = v.filter(Char::isDigit).take(6).toIntOrNull() ?: 0) } },
+            number = true,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Switch(checked = settings.briefEnabled, onCheckedChange = { on -> onUpdate { it.copy(briefEnabled = on) } })
+            Text("Point du matin vers 9 h et bilan le dimanche", style = MaterialTheme.typography.bodyMedium)
+        }
+        Text(
+            "Une seule notification le matin : colis à déposer, annonces à republier, stock à mettre en vente, favoris à relancer, bijoux à racheter. " +
+                "Désactivé, seul le rappel des colis urgents reste.",
             style = MaterialTheme.typography.bodySmall,
         )
 

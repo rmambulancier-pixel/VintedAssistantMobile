@@ -324,6 +324,19 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   vente, coût, prix et marge par pièce. Projection du chiffre d'affaires du mois au rythme actuel, comparée au
   mois précédent.
 
+## Version 1.0
+
+- **Chasseur de pépites** (`domain/Pepites`, `ui/purchases/PepitesScripts`) : sur le site du fournisseur, lecture
+  générique des bijoux affichés (grande image + prix autour) toutes les 3 s, pastille « ×N » = prix de vente probable /
+  coût de revient (prix + port moyen par pièce des commandes reçues). Repère : ventes des bijoux déjà achetés au nom
+  fournisseur proche (similarité ≥ 0,5, même type), sinon médiane du type (≥ 3 ventes, marquée « ~ »), sinon « ? ».
+  Liste « Pépites » au-dessus du seuil (×5, ×10, ×15). « Chasse automatique » : recherches successives des mots
+  des meilleures ventes, 5 défilements chacune. Lecture seule, rythme lent, rien n'est commandé.
+- **Point du matin** (`MorningBrief`, worker de 9 h) : une notification, une ligne par sujet. Bilan le dimanche.
+- **Pilote des prix** : « Appliquer les N baisses » dans Republier.
+- **Alertes** (`SaleInsight`) : dernière pièce d'un modèle vendu au moins deux fois, vente en moins de 2 jours.
+- **Objectif mensuel** (barre sur l'accueil) et **export CSV du mois** (`Reports`).
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

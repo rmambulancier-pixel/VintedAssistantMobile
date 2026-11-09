@@ -156,6 +156,13 @@ class MainViewModel(
         _message.value = "Vente rattachée : fiche « Vendu » créée pour la pièce envoyée, coût d'achat repris."
     }
 
+    /** Pilote des prix : toutes les baisses conseillées appliquées d'un geste. */
+    fun applyPrices(prices: List<Pair<Long, Long>>) = launchSafely("Impossible de changer les prix.") {
+        prices.forEach { (id, cents) -> repository.applyPrice(id, cents) }
+        refreshClock()
+        _message.value = "${prices.size} prix mis à jour ici. La prochaine republication en série les appliquera dans Vinted."
+    }
+
     fun setShippingStatus(saleId: Long, status: ShippingStatus) =
         launchSafely("Impossible de changer le statut d'expédition.") { repository.setShippingStatus(saleId, status) }
 

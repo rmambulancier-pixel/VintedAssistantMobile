@@ -45,6 +45,7 @@ fun RepublishScreen(
     onOpenArticle: (Long) -> Unit,
     onOpenInVinted: (Long) -> Unit = {},
     onRepublishAll: (List<Long>) -> Unit = {},
+    onApplyAllPrices: (List<Pair<Long, Long>>) -> Unit = {},
 ) {
     val context = LocalContext.current
     LazyColumn(modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -139,6 +140,13 @@ fun RepublishScreen(
                         "Applique ici, puis modifie le prix dans Vinted, ou republie l'annonce à ce prix.",
                     style = MaterialTheme.typography.bodySmall,
                 )
+            }
+            if (drops.size > 1) {
+                item {
+                    Button(onClick = { onApplyAllPrices(drops.map { it.article.id to it.suggestedPriceCents!! }) }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Appliquer les ${drops.size} baisses")
+                    }
+                }
             }
             items(drops, key = { "drop-${it.article.id}" }) { s ->
                 ArticleRow(s.article, trailing = {

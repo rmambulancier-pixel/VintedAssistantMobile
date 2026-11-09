@@ -19,6 +19,10 @@ data class AppSettings(
     val aiEnabled: Boolean = true,
     /** Bêta « Vinted intégré » : avertissement lu et accepté. */
     val betaVintedAccepted: Boolean = false,
+    /** Objectif de chiffre d'affaires mensuel en euros, 0 : pas d'objectif. */
+    val monthlyGoalEuros: Int = 0,
+    /** Point du matin (vers 9 h) et bilan du dimanche. */
+    val briefEnabled: Boolean = true,
 ) {
     val republish get() = RepublishSettings(republishMinAgeDays, republishMaxPerDay)
     val dashboard get() = DashboardSettings(contributionRateBp, stagnantDays, priceDropPercent)
@@ -31,6 +35,7 @@ data class AppSettings(
         reminderHour = reminderHour.coerceIn(0, 23),
         stagnantDays = stagnantDays.coerceIn(1, 365),
         priceDropPercent = priceDropPercent.coerceIn(0, 50),
+        monthlyGoalEuros = monthlyGoalEuros.coerceIn(0, 100_000),
     )
 }
 
@@ -53,6 +58,8 @@ class SettingsStore(private val prefs: SharedPreferences) {
             .putInt(K_DROP, next.priceDropPercent)
             .putBoolean(K_AI, next.aiEnabled)
             .putBoolean(K_BETA, next.betaVintedAccepted)
+            .putInt(K_GOAL, next.monthlyGoalEuros)
+            .putBoolean(K_BRIEF, next.briefEnabled)
             .apply()
         state.value = next
     }
@@ -69,6 +76,8 @@ class SettingsStore(private val prefs: SharedPreferences) {
             priceDropPercent = prefs.getInt(K_DROP, d.priceDropPercent),
             aiEnabled = prefs.getBoolean(K_AI, d.aiEnabled),
             betaVintedAccepted = prefs.getBoolean(K_BETA, d.betaVintedAccepted),
+            monthlyGoalEuros = prefs.getInt(K_GOAL, d.monthlyGoalEuros),
+            briefEnabled = prefs.getBoolean(K_BRIEF, d.briefEnabled),
         ).sanitized()
     }
 
@@ -83,5 +92,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
         private const val K_DROP = "price_drop_percent"
         private const val K_AI = "ai_enabled"
         private const val K_BETA = "beta_vinted_accepted"
+        private const val K_GOAL = "monthly_goal_euros"
+        private const val K_BRIEF = "brief_enabled"
     }
 }

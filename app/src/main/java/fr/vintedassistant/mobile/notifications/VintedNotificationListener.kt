@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 /**
  * Lit les notifications que l'application Vinted affiche déjà sur ce téléphone
@@ -40,7 +41,14 @@ class VintedNotificationListener : NotificationListenerService() {
         scope.launch {
             try {
                 val handled = repository.processNotification(key, sbn.postTime, title, text, container.settingsStore.current().priceDropPercent)
-                handled.sale?.let { SaleNotifier.notify(applicationContext, it) }
+                handled.sale?.let { sale ->
+                    val insight = runCatching {
+                        val articles = repository.articles.first()
+                        val stock = fr.vintedassistant.mobile.domain.StockLedger.build(container.purchaseRepository.orders.first(), articles)
+                        fr.vintedassistant.mobile.domain.SaleInsight.of(sale.articleId, stock, repository.sales.first())
+                    }.getOrNull()
+                    SaleNotifier.notify(applicationContext, sale, insight)
+                }
                 handled.reply?.let { ReplyNotifier.notify(applicationContext, it) }
             } catch (e: Exception) {
                 // Une notification perdue n'est pas grave ; on ne fait jamais planter le service.

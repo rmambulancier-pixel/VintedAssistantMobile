@@ -196,3 +196,51 @@ class RestockTest {
         org.junit.Assert.assertEquals(600L, p.lastMonthCents)
     }
 }
+
+class PepitesTest {
+    private val items = listOf(PurchaseItem(1, 1, "Collier chaîne de tennis argent en métal avec incrustation en zircon", null, 30, 4, 70, 3, "", "NH1"))
+    private val order = PurchaseOrder(1, "N", "R", 0, 120, 800, 0, items)
+    private val arts = (1L..3L).map { Article(it, "Collier tennis strass", 70, 800, ArticleStatus.SOLD, 0, purchaseItemId = 1) }
+    private val sales = (1L..3L).map { Sale(it, it, "Collier tennis strass", "Colliers", 800, 70, 0, 2 * DAY_MS, 0) }
+    private val k = Pepites.learn(StockLedger.build(listOf(order), arts), sales, listOf(order))
+
+    @Test
+    fun estimateFromCloseModelTypeOrNothing() {
+        org.junit.Assert.assertEquals(200L, k.shippingPerPieceCents)
+        val close = Pepites.estimate("Collier chaîne de tennis doré en métal incrustation zircon", 40, k)
+        org.junit.Assert.assertEquals(Pepites.Basis.MODEL, close.basis)
+        org.junit.Assert.assertEquals(240L, close.costCents)
+        org.junit.Assert.assertEquals(800L, close.saleCents)
+        org.junit.Assert.assertEquals("×3,3", Pepites.badge(close))
+        val type = Pepites.estimate("Collier papillon émail", 30, k)
+        org.junit.Assert.assertEquals(Pepites.Basis.TYPE, type.basis)
+        org.junit.Assert.assertEquals(Pepites.Basis.NONE, Pepites.estimate("Bague serpent", 30, k).basis)
+        org.junit.Assert.assertTrue(Pepites.keywords(k).contains("tennis"))
+    }
+
+    @Test
+    fun briefInsightAndReports() {
+        val lines = MorningBrief.lines(MorningBrief.Input(1, 0, 2, 3, 0, 15, 1, 0, 0))
+        org.junit.Assert.assertEquals(4, lines.size)
+        org.junit.Assert.assertTrue(MorningBrief.lines(MorningBrief.Input(0, 0, 0, 0, 0, 0, 0, 0, 0)).isEmpty())
+        val stock = StockLedger.build(listOf(order), arts)
+        org.junit.Assert.assertTrue(SaleInsight.of(1, stock, sales)!!.contains("monter le prix"))
+        val w = Reports.week(sales, 0, 3 * DAY_MS)
+        org.junit.Assert.assertEquals(3, w.sales)
+        org.junit.Assert.assertEquals(2190L, w.netCents)
+        val csv = Reports.monthCsv(sales, 0, 3 * DAY_MS, java.time.ZoneId.of("UTC"))
+        org.junit.Assert.assertTrue(csv.lines()[1].startsWith("1970-01-03;\"Collier tennis strass\";8,00;0,70"))
+        org.junit.Assert.assertTrue(csv.contains("Total;;24,00;2,10"))
+    }
+}
+
+class EtaTest {
+    @Test
+    fun etaParsing() {
+        val d = java.time.LocalDate.of(2026, 12, 1)
+        org.junit.Assert.assertTrue(MorningBrief.etaReached("Tues, Dec 01", d))
+        org.junit.Assert.assertFalse(MorningBrief.etaReached("Tues, Dec 01", d.minusDays(1)))
+        org.junit.Assert.assertFalse(MorningBrief.etaReached("Mon, Jan 04", d))
+        org.junit.Assert.assertFalse(MorningBrief.etaReached("", d))
+    }
+}

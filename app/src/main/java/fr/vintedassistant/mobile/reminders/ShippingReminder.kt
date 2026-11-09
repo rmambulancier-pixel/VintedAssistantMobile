@@ -40,6 +40,31 @@ object ShippingReminder {
 
     fun message(urgent: Int, late: Int): String? = ShippingDeadline.reminderText(urgent, late)
 
+    fun notifyLines(context: Context, title: String, lines: List<String>, id: Int) {
+        if (!RepublishReminder.canNotify(context)) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(
+                NotificationChannel("point", "Point du matin et bilans", NotificationManager.IMPORTANCE_DEFAULT),
+            )
+        }
+        val intent = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val pending = PendingIntent.getActivity(context, id, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val text = lines.joinToString("\n") { if (lines.size > 1) "• $it" else it }
+        val notification = NotificationCompat.Builder(context, "point")
+            .setSmallIcon(fr.vintedassistant.mobile.R.drawable.ic_launcher_monochrome)
+            .setContentTitle(title)
+            .setContentText(lines.first())
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(id, notification)
+        } catch (e: SecurityException) {
+            // Permission retirée : rien à faire.
+        }
+    }
+
     fun notify(context: Context, text: String) {
         if (!RepublishReminder.canNotify(context)) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -70,11 +95,42 @@ object ShippingReminder {
 }
 
 class ShippingReminderWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    /** Point du matin : colis, republications, stock à mettre en vente, favoris, réassort. Une seule notification. */
     override suspend fun doWork(): Result = try {
-        val sales = (applicationContext as VintedBoostApp).container.articleRepository.sales.first()
+        val container = (applicationContext as VintedBoostApp).container
+        val settings = container.settingsStore.current()
+        val repo = container.articleRepository
+        val sales = repo.sales.first()
+        val articles = repo.articles.first()
+        val orders = container.purchaseRepository.orders.first()
         val now = System.currentTimeMillis()
         val dues = sales.mapNotNull { ShippingDeadline.due(it, now) }
-        ShippingReminder.message(dues.count { it.urgent }, dues.count { it.late })?.let { ShippingReminder.notify(applicationContext, it) }
+        if (!settings.briefEnabled) {
+            ShippingReminder.message(dues.count { it.urgent }, dues.count { it.late })?.let { ShippingReminder.notify(applicationContext, it) }
+        } else {
+            val stock = fr.vintedassistant.mobile.domain.StockLedger.build(orders, articles)
+            val plan = fr.vintedassistant.mobile.domain.RepublishPlanner.plan(articles, repo.republishedTimestamps.first(), settings.republish, now)
+            val dashboard = fr.vintedassistant.mobile.domain.computeDashboard(articles, sales, settings.dashboard, now)
+            val favorites = repo.notices.first().count {
+                !it.handled && it.kind == fr.vintedassistant.mobile.domain.VintedEventKind.FAVORITE && it.postedAt > now - 2 * fr.vintedassistant.mobile.domain.DAY_MS
+            }
+            val lines = fr.vintedassistant.mobile.domain.MorningBrief.lines(
+                fr.vintedassistant.mobile.domain.MorningBrief.Input(
+                    urgentParcels = dues.count { it.urgent }, lateParcels = dues.count { it.late },
+                    toShip = sales.count { it.shippingStatus == fr.vintedassistant.mobile.domain.ShippingStatus.TO_SHIP },
+                    toRepublish = plan.today.size, priceDrops = dashboard.stagnant.count { it.suggestedPriceCents != null },
+                    notListed = stock.notListed, restock = fr.vintedassistant.mobile.domain.Restock.advise(stock, sales).size,
+                    favorites = favorites,
+                    arrivingOrders = orders.count { !it.received && fr.vintedassistant.mobile.domain.MorningBrief.etaReached(it.deliveryEta, java.time.LocalDate.now()) },
+                ),
+            )
+            if (lines.isNotEmpty()) ShippingReminder.notifyLines(applicationContext, "Point du matin", lines, 1002)
+            // Bilan de la semaine, le dimanche.
+            if (java.time.LocalDate.now().dayOfWeek == java.time.DayOfWeek.SUNDAY) {
+                val week = fr.vintedassistant.mobile.domain.Reports.week(sales, settings.contributionRateBp, now)
+                ShippingReminder.notifyLines(applicationContext, "Bilan de la semaine", listOf(fr.vintedassistant.mobile.domain.Reports.weekText(week)), 1003)
+            }
+        }
         Result.success()
     } catch (e: Exception) {
         Result.retry()

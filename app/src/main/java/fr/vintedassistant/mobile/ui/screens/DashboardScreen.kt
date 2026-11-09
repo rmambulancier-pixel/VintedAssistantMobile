@@ -53,6 +53,7 @@ fun DashboardScreen(
     onOpenRepublish: () -> Unit = {},
     restock: List<Restock.Advice> = emptyList(),
     onOpenPurchases: () -> Unit = {},
+    monthlyGoalEuros: Int = 0,
 ) {
     var openFinding by remember { mutableStateOf<String?>(null) }
     val now = System.currentTimeMillis()
@@ -118,6 +119,20 @@ fun DashboardScreen(
                 "Chiffre d'affaires" to Money.formatEuros(stats.totalRevenueCents),
                 "Bénéfice net" to Money.formatEuros(stats.totalNetCents),
             )
+        }
+        if (monthlyGoalEuros > 0) {
+            item {
+                val goal = monthlyGoalEuros * 100L
+                val ratio = (stats.monthRevenueCents.toFloat() / goal).coerceIn(0f, 1f)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    androidx.compose.material3.LinearProgressIndicator(progress = { ratio }, modifier = Modifier.fillMaxWidth())
+                    Text(
+                        if (stats.monthRevenueCents >= goal) "Objectif du mois atteint : ${Money.formatEuros(stats.monthRevenueCents)} sur ${Money.formatEuros(goal)}."
+                        else "Objectif du mois : ${Money.formatEuros(stats.monthRevenueCents)} sur ${Money.formatEuros(goal)}, il manque ${Money.formatEuros(goal - stats.monthRevenueCents)}.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
         }
         if (stats.monthSalesCount > 0) {
             item {

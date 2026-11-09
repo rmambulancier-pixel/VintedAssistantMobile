@@ -17,7 +17,7 @@ import fr.vintedassistant.mobile.reminders.RepublishReminder
 object SaleNotifier {
     private const val CHANNEL_ID = "ventes"
 
-    fun notify(context: Context, sale: ArticleRepository.AutoSale) {
+    fun notify(context: Context, sale: ArticleRepository.AutoSale, insight: String? = null) {
         if (!RepublishReminder.canNotify(context)) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(
@@ -31,8 +31,9 @@ object SaleNotifier {
             context, sale.articleId.toInt(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val price = Money.formatEuros(sale.priceCents)
-        val text = if (sale.priceFromNotice) "${sale.title.take(60)} : $price, à expédier."
-            else "${sale.title.take(60)} : $price (prix affiché, corrige-le si tu as accepté une offre). À expédier."
+        val text = (if (sale.priceFromNotice) "${sale.title.take(60)} : $price, à expédier."
+            else "${sale.title.take(60)} : $price (prix affiché, corrige-le si tu as accepté une offre). À expédier.") +
+            (insight?.let { " $it" } ?: "")
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(fr.vintedassistant.mobile.R.drawable.ic_launcher_monochrome)
             .setContentTitle("Vente enregistrée")

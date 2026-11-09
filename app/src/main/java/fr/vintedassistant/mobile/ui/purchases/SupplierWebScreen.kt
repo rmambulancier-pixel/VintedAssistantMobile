@@ -1,5 +1,11 @@
 package fr.vintedassistant.mobile.ui.purchases
 
+import fr.vintedassistant.mobile.domain.Pepites
+import fr.vintedassistant.mobile.domain.StockLedger
+import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.layout.heightIn
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
@@ -262,6 +268,9 @@ private suspend fun importCurrent(session: Session, repo: PurchaseRepository): P
     return repo.saveOrder(SUPPLIER_NIHAO, order)
 }
 
+/** Bijou repéré chez le fournisseur avec une estimation au-dessus du seuil choisi. */
+private data class Nugget(val name: String, val href: String, val priceCents: Long, val estimate: Pepites.Estimate)
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit) {
@@ -275,6 +284,69 @@ fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit) {
     var progress by remember { mutableStateOf<String?>(null) }
     var job by remember { mutableStateOf<Job?>(null) }
     var diagnostic by remember { mutableStateOf<String?>(null) }
+
+    // --- Chasseur de pépites : pastilles sur les bijoux affichés, d'après les ventes réelles. ---
+    var knowledge by remember { mutableStateOf<Pepites.Knowledge?>(null) }
+    val found = remember { androidx.compose.runtime.mutableStateMapOf<String, Nugget>() }
+    var showNuggets by remember { mutableStateOf(false) }
+    var minMultiple by rememberSaveable { mutableStateOf(10) }
+    LaunchedEffect(Unit) {
+        val c = context.container()
+        val orders = repo.orders.first()
+        val articles = c.articleRepository.articles.first()
+        knowledge = Pepites.learn(StockLedger.build(orders, articles), c.articleRepository.sales.first(), orders)
+    }
+    suspend fun scanOnce(): Int {
+        val k = knowledge ?: return 0
+        val raw = session.web?.js(PepitesScripts.scan) ?: return 0
+        val list = runCatching { org.json.JSONArray(raw) }.getOrNull() ?: return 0
+        val badges = org.json.JSONArray()
+        for (i in 0 until list.length()) {
+            val o = list.getJSONObject(i)
+            val price = Money.parseEuros(o.optString("price")) ?: continue
+            val name = o.optString("name")
+            val e = Pepites.estimate(name, price, k)
+            val m = e.multiple
+            val color = when { m == null -> "#777777"; m >= minMultiple -> "#1b8a3a"; m >= minMultiple / 2.0 -> "#c77700"; else -> "#b3261e" }
+            badges.put(org.json.JSONObject().put("id", o.optString("id")).put("text", Pepites.badge(e)).put("color", color))
+            val href = o.optString("href")
+            if (m != null && m >= minMultiple && href.isNotBlank()) found[href] = Nugget(name, href, price, e)
+        }
+        if (badges.length() > 0) session.web?.js(PepitesScripts.paint(badges))
+        return list.length()
+    }
+    // Les pages se chargent au défilement : relecture légère toutes les 3 secondes tant que l'écran est ouvert.
+    LaunchedEffect(knowledge, minMultiple) {
+        while (true) {
+            if (job == null) runCatching { scanOnce() }
+            delay(3_000)
+        }
+    }
+    if (showNuggets) {
+        val list = found.values.sortedByDescending { it.estimate.multiple ?: 0.0 }
+        AlertDialog(
+            onDismissRequest = { showNuggets = false },
+            title = { Text("Pépites ×$minMultiple et plus (${list.size})") },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (list.isEmpty()) Text("Aucune pour l'instant. Parcours le site ou lance la chasse automatique.")
+                    list.forEach { n ->
+                        TextButton(onClick = { showNuggets = false; session.web?.loadUrl(n.href) }) {
+                            Text(
+                                "${Pepites.badge(n.estimate)}  ${n.name.take(70)}\n" +
+                                    "Revient à ${euros(n.estimate.costCents)}, se vend vers ${euros(n.estimate.saleCents ?: 0)}" +
+                                    (if (n.estimate.basis == Pepites.Basis.MODEL) " (${n.estimate.soldSimilar} ventes de modèles proches" +
+                                        (n.estimate.averageDays?.let { ", en ${it.toInt()} j" } ?: "") + ")" else " (prix habituel de ce type de bijou)"),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showNuggets = false }) { Text("Fermer") } },
+            dismissButton = { TextButton(onClick = { found.clear() }) { Text("Vider") } },
+        )
+    }
 
     BackHandler { val w = session.web; if (w != null && w.canGoBack()) w.goBack() else onClose() }
     DisposableEffect(Unit) { onDispose { session.web?.destroy(); session.web = null } }
@@ -381,6 +453,43 @@ fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit) {
                         TextButton(onClick = { job?.cancel() }) { Text("Arrêter") }
                     }
                 }
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(onClick = { showNuggets = true }) { Text("Pépites (${found.size})") }
+                OutlinedButton(enabled = job == null && knowledge != null, onClick = {
+                    job = scope.launch {
+                        try {
+                            val words = Pepites.keywords(knowledge!!)
+                            if (words.isEmpty()) { status = "Pas encore assez de ventes pour savoir quoi chercher."; return@launch }
+                            for ((i, w) in words.withIndex()) {
+                                progress = "Chasse ${i + 1}/${words.size} : « $w »…"
+                                if (session.web?.js(PepitesScripts.search(w)) != "ok") {
+                                    status = "Champ de recherche introuvable sur cette page : ouvre l'accueil du site, puis relance."
+                                    return@launch
+                                }
+                                delay(5_000)
+                                repeat(5) { runCatching { scanOnce() }; session.web?.js(PepitesScripts.scrollDown); delay(2_000) }
+                            }
+                            status = "Chasse terminée : ${found.size} pépite(s) ×$minMultiple et plus. Touche « Pépites »."
+                        } catch (e: CancellationException) {
+                            status = "Chasse arrêtée : ${found.size} pépite(s) gardée(s)."
+                            throw e
+                        } finally {
+                            progress = null
+                            job = null
+                        }
+                    }
+                }) { Text("Chasse automatique") }
+                listOf(5, 10, 15).forEach { m ->
+                    androidx.compose.material3.FilterChip(selected = minMultiple == m, onClick = { minMultiple = m; found.clear() }, label = { Text("×$m") })
+                }
+            }
+            knowledge?.let { k ->
+                Text(
+                    "Pastille sur chaque bijou : prix de vente probable divisé par le coût de revient (prix + ${euros(k.shippingPerPieceCents)} de port par pièce). " +
+                        "« ~ » : d'après le type de bijou seulement. « ? » : aucun repère dans tes ventes.",
+                    style = MaterialTheme.typography.labelSmall,
+                )
             }
             status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())

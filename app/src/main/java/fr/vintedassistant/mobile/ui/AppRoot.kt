@@ -305,6 +305,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                     onOpenSales = { tabIndex = Tab.SALES.ordinal },
                     onOpenRepublish = { tabIndex = Tab.REPUBLISH.ordinal },
                     restock = restock,
+                    monthlyGoalEuros = settings.monthlyGoalEuros,
                     onOpenPurchases = { overlayIndex = Overlay.PURCHASES.ordinal },
                 )
                 Tab.STOCK -> StockScreen(
@@ -331,6 +332,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                     modifier = modifier,
                     onRepublished = vm::markRepublished,
                     onApplyPrice = vm::applyPrice,
+                    onApplyAllPrices = vm::applyPrices,
                     onOpenArticle = ::openEditor,
                     onOpenInVinted = { id -> vintedQueue = ArrayList(); vintedArticle = id; overlayIndex = Overlay.VINTED.ordinal },
                     onRepublishAll = { ids -> vintedQueue = ArrayList(ids); vintedArticle = ids.firstOrNull(); overlayIndex = Overlay.VINTED.ordinal },
