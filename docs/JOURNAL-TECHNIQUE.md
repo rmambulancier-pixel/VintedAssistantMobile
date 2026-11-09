@@ -286,6 +286,14 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   autre) : choix de la pièce sortie du stock parmi les produits reçus qui ont encore des pièces ; création
   d'une fiche « Vendu » rattachée, coût d'achat repris sur la vente, pièce envoyée notée dans la vente.
 
+- **0.17** : republication en série (onglet Republier, « Tout republier en série »). Pour chaque annonce du plan :
+  formulaire « Vendre » rempli (photo principale décalée chaque semaine pour ne jamais republier à l'identique),
+  l'utilisateur touche « Ajouter » ; la nouvelle annonce est reconnue à son adresse (suivi aussi de la navigation
+  interne de Vinted via `doUpdateVisitedHistory`), la fiche est notée republiée et reliée au nouveau lien ;
+  l'ancienne annonce s'ouvre, l'utilisateur touche « Supprimer » ; passage à la suivante quand il la quitte.
+  Boutons de secours « Elle est en ligne », « Suivante », « Arrêter ». Aucun délai simulé, aucune action à la
+  place de l'utilisateur sur « Ajouter » et « Supprimer » : rien qui cherche à tromper la détection de Vinted.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

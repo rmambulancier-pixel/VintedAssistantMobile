@@ -37,6 +37,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -99,6 +101,7 @@ fun VintedWebScreen(
     onPublished: (Article) -> Unit,
     onLinkArticle: (Long, String) -> Unit,
     onClose: () -> Unit,
+    queue: List<Long> = emptyList(),
 ) {
     val context = LocalContext.current
     val session = remember { WebSession() }
@@ -151,8 +154,180 @@ fun VintedWebScreen(
         )
     }
 
+    /** Remplit le formulaire « Vendre » avec la fiche [a] (photos, texte, catégorie, détails, prix). */
+    suspend fun fillListing(a: Article, rotatePhotos: Boolean = false) {
+        val draft = ListingTemplates.draft(a)
+        val description = a.description.ifBlank { draft.description }
+        val tags = a.keywords.ifBlank { draft.keywords }
+        val full = if (tags.isBlank() || description.contains(tags)) description else "$description\n\n$tags"
+        val web = session.webView ?: return
+
+        // « Remplir » ne marche que sur le formulaire « Vendre » : on l'ouvre et on attend qu'il soit chargé.
+        if (!currentUrl.contains("/items/new")) {
+            status = "Ouverture du formulaire « Vendre »…"
+            web.loadUrl(SELL)
+            delay(1500)
+        }
+        var ready = false
+        for (i in 0 until 40) {
+            if (web.evalJs(VintedPageScripts.formReady) == "1") { ready = true; break }
+            delay(300)
+        }
+        if (!ready) {
+            status = "Le formulaire « Vendre » n'est pas encore chargé (connexion lente ou page de connexion). Réessaie « Remplir » dans un instant."
+            return
+        }
+        web.evaluateJavascript(VintedPageScripts.dialogFix, null)
+        // Photos : le sélecteur de Vinted reçoit directement celles de la fiche.
+        if (a.photos.isNotEmpty()) {
+            val store = context.container().photoStore
+            // Republication : la photo principale change d'une semaine à l'autre (jamais deux annonces identiques).
+            val photos = if (rotatePhotos && a.photos.size > 1) {
+                val k = ((System.currentTimeMillis() / (7L * 24 * 3600 * 1000)) % a.photos.size).toInt().coerceAtLeast(1)
+                a.photos.drop(k) + a.photos.take(k)
+            } else a.photos
+            session.pendingPhotos = photos.map { store.shareUri(it) }
+            photosReady = photos.size
+            web.evalJs(VintedPageScripts.openPhotoPicker)
+            delay(1500)
+        }
+        val filled = VintedPageScripts.fillSummary(web.evalJs(VintedPageScripts.fill(a.title, full, Money.formatPlain(a.priceCents).replace(',', '.'))))
+        status = "$filled Catégorie en cours…"
+        val c = CategoryGuess.of(a)
+        web.evalJs(VintedPageScripts.categoryStart(c.query, c.leaves, c.gender, c.avoid))
+        var result: org.json.JSONObject? = null
+        for (i in 0 until 100) {
+            delay(300)
+            val raw = web.evalJs(VintedPageScripts.categoryResult)
+            val json = raw?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
+            if (json != null && json.optBoolean("done")) { result = json; break }
+        }
+        status = filled + " " + CategoryGuess.summary(result)
+        if (result == null || !result.optBoolean("ok")) {
+            if (result != null) diagnostic = result.toString(2)
+            return
+        }
+        // Détails apparus avec la catégorie : pour qui, marque, état, couleur, matériau.
+        delay(800)
+        web.evalJs(VintedPageScripts.detailsStart(DetailsGuess.fields(a)))
+        var details: org.json.JSONObject? = null
+        for (i in 0 until 300) {
+            delay(300)
+            val json = web.evalJs(VintedPageScripts.detailsResult)?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
+            if (json != null && json.optBoolean("done")) { details = json; break }
+        }
+        // Prix en dernier : point décimal d'abord (« 9.50 »), virgule si Vinted ne le comprend pas.
+        val cents = a.priceCents
+        val dot = (cents / 100).toString() + (if (cents % 100 == 0L) "" else "." + (cents % 100).toString().padStart(2, '0'))
+        var priceOk = false
+        for (v in listOf(dot, dot.replace('.', ','))) {
+            web.evalJs(VintedPageScripts.setPrice(v))
+            delay(600)
+            val shown = web.evalJs(VintedPageScripts.readPrice).orEmpty()
+            if (shown.any { it.isDigit() } && !shown.contains("NaN", ignoreCase = true)) { priceOk = true; break }
+        }
+        web.evalJs(VintedPageScripts.packageSmall)
+        status = DetailsGuess.summary(details) + (if (priceOk) "" else " Prix à saisir à la main.")
+        if (details == null || DetailsGuess.hasGaps(details)) details?.let { diagnostic = it.toString(2) }
+    }
+
+    // --- Republication en série : l'application remplit, l'utilisateur touche « Ajouter » puis « Supprimer ». ---
+    var queueIndex by rememberSaveable { mutableStateOf(if (queue.isEmpty()) -1 else 0) }
+    var phase by rememberSaveable { mutableStateOf(SeriesPhase.IDLE) }
+    var oldUrl by rememberSaveable { mutableStateOf("") }
+    var sawOld by rememberSaveable { mutableStateOf(false) }
+    var doneCount by rememberSaveable { mutableStateOf(0) }
+    val inSeries = queueIndex in queue.indices
+
+    fun startCurrent() {
+        val id = queue.getOrNull(queueIndex) ?: return
+        val a = articles.orEmpty().firstOrNull { it.id == id } ?: return
+        selectedId = id
+        photosReady = 0
+        session.pendingPhotos = emptyList()
+        oldUrl = a.vintedUrl.substringBefore('?')
+        sawOld = false
+        phase = SeriesPhase.FILLING
+        scope.launch {
+            fillListing(a, rotatePhotos = true)
+            phase = SeriesPhase.WAIT_PUBLISH
+            status = "Annonce ${queueIndex + 1} sur ${queue.size} : " + (status ?: "") +
+                " Touche « Ajouter » dans Vinted : l'application ouvrira ensuite l'ancienne annonce pour que tu la supprimes."
+        }
+    }
+
+    fun next() {
+        doneCount++
+        queueIndex++
+        if (queueIndex in queue.indices) startCurrent() else {
+            phase = SeriesPhase.IDLE
+            status = "Republication terminée : $doneCount annonce(s). Pense à vérifier ton dressing."
+        }
+    }
+
+    fun onNewListing(url: String) {
+        val a = article ?: return
+        onPublished(a)
+        onLinkArticle(a.id, url)
+        val old = oldUrl
+        if (old.isBlank() || VintedLinks.itemId(old) == null) {
+            status = "Nouvelle annonce enregistrée. Pas d'ancienne annonce connue : supprime-la toi-même si elle existe."
+            next()
+        } else {
+            phase = SeriesPhase.WAIT_DELETE
+            sawOld = false
+            status = "Nouvelle annonce enregistrée. Supprime maintenant l'ancienne : menu de l'annonce, puis « Supprimer »."
+            session.webView?.loadUrl(old)
+        }
+    }
+
+    LaunchedEffect(articles != null) {
+        if (articles != null && inSeries && phase == SeriesPhase.IDLE && doneCount == 0) startCurrent()
+    }
+    LaunchedEffect(currentUrl, phase) {
+        when (phase) {
+            SeriesPhase.WAIT_PUBLISH -> {
+                val id = VintedLinks.itemId(currentUrl)
+                if (id != null && !currentUrl.contains("/edit") && id != VintedLinks.itemId(oldUrl)) onNewListing(currentUrl.substringBefore('?'))
+            }
+            SeriesPhase.WAIT_DELETE -> {
+                val oldId = VintedLinks.itemId(oldUrl)
+                if (oldId != null && VintedLinks.itemId(currentUrl) == oldId) sawOld = true
+                else if (sawOld && currentUrl.isNotBlank() && !currentUrl.contains("/edit")) {
+                    status = "Ancienne annonce quittée. Annonce suivante…"
+                    next()
+                }
+            }
+            else -> Unit
+        }
+    }
+
     Column(modifier) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (inSeries) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Série ${queueIndex + 1}/${queue.size} : " + when (phase) {
+                            SeriesPhase.FILLING -> "remplissage…"
+                            SeriesPhase.WAIT_PUBLISH -> "touche « Ajouter »"
+                            SeriesPhase.WAIT_DELETE -> "supprime l'ancienne"
+                            SeriesPhase.IDLE -> "prêt"
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    when (phase) {
+                        SeriesPhase.WAIT_PUBLISH -> TextButton(onClick = {
+                            val id = VintedLinks.itemId(currentUrl)
+                            if (id != null && id != VintedLinks.itemId(oldUrl)) onNewListing(currentUrl.substringBefore('?'))
+                            else status = "Ouvre la nouvelle annonce dans Vinted (ton dressing), puis touche à nouveau « Elle est en ligne »."
+                        }) { Text("Elle est en ligne") }
+                        SeriesPhase.WAIT_DELETE -> TextButton(onClick = { next() }) { Text("Suivante") }
+                        else -> Unit
+                    }
+                    TextButton(onClick = { queueIndex = queue.size; phase = SeriesPhase.IDLE; status = "Série arrêtée." }) { Text("Arrêter") }
+                }
+            }
             Box {
                 OutlinedButton(onClick = { menu = true }, modifier = Modifier.fillMaxWidth()) {
                     Text(article?.let { "${it.title} • ${Money.formatEuros(it.priceCents)}" } ?: "Choisir l'article à publier")
@@ -188,75 +363,7 @@ fun VintedWebScreen(
                     enabled = article != null,
                     onClick = {
                         val a = article ?: return@Button
-                        val draft = ListingTemplates.draft(a)
-                        val description = a.description.ifBlank { draft.description }
-                        val tags = a.keywords.ifBlank { draft.keywords }
-                        val full = if (tags.isBlank() || description.contains(tags)) description else "$description\n\n$tags"
-                        val web = session.webView ?: return@Button
-                        scope.launch {
-                            // « Remplir » ne marche que sur le formulaire « Vendre » : on l'ouvre et on attend qu'il soit chargé.
-                            if (!currentUrl.contains("/items/new")) {
-                                status = "Ouverture du formulaire « Vendre »…"
-                                web.loadUrl(SELL)
-                                delay(1500)
-                            }
-                            var ready = false
-                            for (i in 0 until 40) {
-                                if (web.evalJs(VintedPageScripts.formReady) == "1") { ready = true; break }
-                                delay(300)
-                            }
-                            if (!ready) {
-                                status = "Le formulaire « Vendre » n'est pas encore chargé (connexion lente ou page de connexion). Réessaie « Remplir » dans un instant."
-                                return@launch
-                            }
-                            web.evaluateJavascript(VintedPageScripts.dialogFix, null)
-                            // Photos : le sélecteur de Vinted reçoit directement celles de la fiche.
-                            if (a.photos.isNotEmpty()) {
-                                val store = context.container().photoStore
-                                session.pendingPhotos = a.photos.map { store.shareUri(it) }
-                                photosReady = a.photos.size
-                                web.evalJs(VintedPageScripts.openPhotoPicker)
-                                delay(1500)
-                            }
-                            val filled = VintedPageScripts.fillSummary(web.evalJs(VintedPageScripts.fill(a.title, full, Money.formatPlain(a.priceCents).replace(',', '.'))))
-                            status = "$filled Catégorie en cours…"
-                            val c = CategoryGuess.of(a)
-                            web.evalJs(VintedPageScripts.categoryStart(c.query, c.leaves, c.gender, c.avoid))
-                            var result: org.json.JSONObject? = null
-                            for (i in 0 until 100) {
-                                delay(300)
-                                val raw = web.evalJs(VintedPageScripts.categoryResult)
-                                val json = raw?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
-                                if (json != null && json.optBoolean("done")) { result = json; break }
-                            }
-                            status = filled + " " + CategoryGuess.summary(result)
-                            if (result == null || !result.optBoolean("ok")) {
-                                if (result != null) diagnostic = result.toString(2)
-                                return@launch
-                            }
-                            // Détails apparus avec la catégorie : pour qui, marque, état, couleur, matériau.
-                            delay(800)
-                            web.evalJs(VintedPageScripts.detailsStart(DetailsGuess.fields(a)))
-                            var details: org.json.JSONObject? = null
-                            for (i in 0 until 300) {
-                                delay(300)
-                                val json = web.evalJs(VintedPageScripts.detailsResult)?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
-                                if (json != null && json.optBoolean("done")) { details = json; break }
-                            }
-                            // Prix en dernier : point décimal d'abord (« 9.50 »), virgule si Vinted ne le comprend pas.
-                            val cents = a.priceCents
-                            val dot = (cents / 100).toString() + (if (cents % 100 == 0L) "" else "." + (cents % 100).toString().padStart(2, '0'))
-                            var priceOk = false
-                            for (v in listOf(dot, dot.replace('.', ','))) {
-                                web.evalJs(VintedPageScripts.setPrice(v))
-                                delay(600)
-                                val shown = web.evalJs(VintedPageScripts.readPrice).orEmpty()
-                                if (shown.any { it.isDigit() } && !shown.contains("NaN", ignoreCase = true)) { priceOk = true; break }
-                            }
-                            web.evalJs(VintedPageScripts.packageSmall)
-                            status = DetailsGuess.summary(details) + (if (priceOk) "" else " Prix à saisir à la main.")
-                            if (details == null || DetailsGuess.hasGaps(details)) details?.let { diagnostic = it.toString(2) }
-                        }
+                        scope.launch { fillListing(a) }
                     },
                 ) { Text("Remplir") }
                 OutlinedButton(
@@ -349,6 +456,11 @@ fun VintedWebScreen(
 
                         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
                             loading = true
+                            currentUrl = url.orEmpty()
+                        }
+
+                        // Vinted change de page sans recharger (navigation interne) : on suit l'adresse quand même.
+                        override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
                             currentUrl = url.orEmpty()
                         }
 
@@ -547,3 +659,5 @@ private suspend fun runImport(
         append(" Complète le coût d'achat de chaque fiche pour avoir tes marges.")
     }
 }
+
+private enum class SeriesPhase { IDLE, FILLING, WAIT_PUBLISH, WAIT_DELETE }

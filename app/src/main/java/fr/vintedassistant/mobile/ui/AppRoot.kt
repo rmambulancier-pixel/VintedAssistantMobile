@@ -89,6 +89,8 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
     var assistantArticle by rememberSaveable { mutableStateOf<Long?>(null) }
     var assistantTab by rememberSaveable { mutableIntStateOf(0) }
     var vintedArticle by rememberSaveable { mutableStateOf<Long?>(null) }
+    // Republication en série : fiches à republier l'une après l'autre dans Vinted intégré.
+    var vintedQueue by rememberSaveable { mutableStateOf<ArrayList<Long>>(ArrayList()) }
 
     val settings by vm.settings.collectAsStateWithLifecycle()
     val articles by vm.articles.collectAsStateWithLifecycle()
@@ -154,6 +156,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
             confirmButton = {
                 TextButton(onClick = {
                     created = null
+                    vintedQueue = ArrayList()
                     vintedArticle = id
                     overlayIndex = Overlay.VINTED.ordinal
                 }) { Text("Publier dans Vinted intégré") }
@@ -274,7 +277,8 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                 onAccept = { vm.updateSettings { it.copy(betaVintedAccepted = true) } },
                 onPublished = vm::markPublishedOrRepublished,
                 onLinkArticle = vm::linkArticle,
-                onClose = { close() },
+                onClose = { vintedQueue = ArrayList(); close() },
+                queue = vintedQueue,
             )
             Overlay.NONE -> when (tab) {
                 Tab.HOME -> DashboardScreen(
@@ -298,7 +302,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                     actions = StockActions(
                         openArticle = ::openEditor,
                         openPurchases = { overlayIndex = Overlay.PURCHASES.ordinal },
-                        openVinted = { vintedArticle = null; overlayIndex = Overlay.VINTED.ordinal },
+                        openVinted = { vintedQueue = ArrayList(); vintedArticle = null; overlayIndex = Overlay.VINTED.ordinal },
                         relaunch = { templateId, itemId -> vm.relaunch(templateId, itemId) { created = it } },
                         draftFromPurchase = { itemId -> vm.draftFromPurchase(itemId, ::openEditor) },
                         link = { a, lot -> vm.linkToPurchase(a.id, lot.itemId, a.title, lot.landedUnitCents) },
@@ -313,7 +317,8 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                     onRepublished = vm::markRepublished,
                     onApplyPrice = vm::applyPrice,
                     onOpenArticle = ::openEditor,
-                    onOpenInVinted = { id -> vintedArticle = id; overlayIndex = Overlay.VINTED.ordinal },
+                    onOpenInVinted = { id -> vintedQueue = ArrayList(); vintedArticle = id; overlayIndex = Overlay.VINTED.ordinal },
+                    onRepublishAll = { ids -> vintedQueue = ArrayList(ids); vintedArticle = ids.firstOrNull(); overlayIndex = Overlay.VINTED.ordinal },
                 )
                 Tab.SALES -> SalesScreen(
                     sales = sales,

@@ -44,6 +44,7 @@ fun RepublishScreen(
     onApplyPrice: (Long, Long) -> Unit,
     onOpenArticle: (Long) -> Unit,
     onOpenInVinted: (Long) -> Unit = {},
+    onRepublishAll: (List<Long>) -> Unit = {},
 ) {
     val context = LocalContext.current
     LazyColumn(modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -73,6 +74,18 @@ fun RepublishScreen(
             }
         }
         item { SectionTitle("Plan du jour") }
+        if (settings.betaVintedAccepted && plan.today.isNotEmpty()) {
+            item {
+                Button(onClick = { onRepublishAll(plan.today.map { it.id }) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Tout republier en série (${plan.today.size})")
+                }
+                Text(
+                    "L'application ouvre « Vendre » et remplit chaque annonce (photo principale changée). Tu touches « Ajouter », " +
+                        "elle ouvre l'ancienne annonce, tu touches « Supprimer », puis elle passe à la suivante. Environ 30 secondes par annonce.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
         if (plan.today.isEmpty()) {
             item {
                 Text(
