@@ -279,3 +279,22 @@ class StockBoardTest {
         org.junit.Assert.assertTrue(StockBoard.etaLabel(b.orders.single(), today).contains("dans 23 jours"))
     }
 }
+
+class InventoryTest {
+    @Test
+    fun countingFewerPiecesUsesFreePiecesThenDrafts() {
+        val order = PurchaseOrder(1, "N", "A", 0, 0, 0, 0, listOf(PurchaseItem(1, 1, "Bracelet jonc (6)", null, 0, 4, 105, 3, "", "NH1")))
+        val arts = listOf(
+            Article(1, "Jonc", 105, 600, ArticleStatus.ONLINE, 0, purchaseItemId = 1),
+            Article(2, "Jonc", 105, 600, ArticleStatus.DRAFT, 0, purchaseItemId = 1),
+            Article(3, "Jonc", 105, 600, ArticleStatus.DRAFT, 0, purchaseItemId = 1, photos = listOf("a.jpg")),
+        )
+        val line = Inventory.lines(StockLedger.build(listOf(order), arts), emptyList()).single()
+        org.junit.Assert.assertEquals(4, line.expected)
+        val s = Inventory.shortfall(line, 2)
+        org.junit.Assert.assertEquals(listOf(1L to 1), s.missing)
+        org.junit.Assert.assertEquals(listOf(2L), s.withdrawDrafts.map { it.id }) // le brouillon sans photo d'abord
+        org.junit.Assert.assertEquals(0, s.unresolved)
+        org.junit.Assert.assertEquals(1, Inventory.shortfall(line, 0).unresolved)
+    }
+}

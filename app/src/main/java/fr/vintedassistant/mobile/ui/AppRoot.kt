@@ -39,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -72,7 +73,7 @@ enum class Tab(val label: String, val icon: ImageVector) {
 /** Écrans affichés par-dessus les onglets. */
 private enum class Overlay(val title: String) {
     NONE(""), SETTINGS("Réglages"), ACTIVITY("Activité Vinted"), VINTED("Vinted intégré (bêta)"),
-    PURCHASES("Achats fournisseur"), SUPPLIER("Nihaojewelry"), EXPRESS("Mise en vente express"),
+    PURCHASES("Achats fournisseur"), SUPPLIER("Nihaojewelry"), EXPRESS("Mise en vente express"), INVENTORY("Inventaire"),
 }
 
 /**
@@ -273,6 +274,12 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                 onOpenArticle = { close(); openEditor(it) },
                 onMessage = vm::show,
             )
+            Overlay.INVENTORY -> fr.vintedassistant.mobile.ui.screens.InventoryScreen(
+                stock = stock,
+                sales = sales.orEmpty(),
+                modifier = modifier,
+                onDone = { vm.show(it); close() },
+            )
             Overlay.EXPRESS -> ExpressScreen(
                 ids = expressIds,
                 articles = articles,
@@ -292,6 +299,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                 onLinkArticle = vm::linkArticle,
                 onClose = { vintedQueue = ArrayList(); close() },
                 queue = vintedQueue,
+                origins = remember(stock) { fr.vintedassistant.mobile.ui.pieceOrigins(stock) },
             )
             Overlay.NONE -> when (tab) {
                 Tab.HOME -> DashboardScreen(
@@ -325,6 +333,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                         draftFromPurchase = { itemId -> vm.draftFromPurchase(itemId, ::openEditor) },
                         link = { a, lot -> vm.linkToPurchase(a.id, lot.itemId, a.title, lot.landedUnitCents) },
                         markReceived = { orderId -> vm.setOrderReceived(orderId, true) },
+                        inventory = { overlayIndex = Overlay.INVENTORY.ordinal },
                         expressAll = { vm.startExpress { ids -> expressIds = ArrayList(ids); overlayIndex = Overlay.EXPRESS.ordinal } },
                     ),
                 )

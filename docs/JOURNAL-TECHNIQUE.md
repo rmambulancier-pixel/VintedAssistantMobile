@@ -343,6 +343,13 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   préparer, en route vers l'acheteur, terminées), puis jamais reçues et retirées. Le vocabulaire « en cours de
   livraison » est réservé aux colis des acheteurs ; côté fournisseur on parle de réassort partout.
 
+- **1.2** : choix de fiche avec photo (`ui/ArticlePicker`) dans Vinted intégré : photo de la fiche, sinon photo du
+  fournisseur marquée comme telle, variante achetée, état, prix, nombre de photos, numéro de fiche ; groupes « prêtes
+  à publier », « à compléter », « en ligne » ; recherche. Inventaire (`domain/Inventory`, `InventoryScreen`) : un
+  bijou par ligne, attendu en main (sans fiche + brouillons + en vente + à expédier), compteur ; un manque déclare
+  d'abord des pièces sans fiche manquantes, puis passe des brouillons à « Retiré » ; le reste (annonces en ligne)
+  est signalé, jamais modifié d'office.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

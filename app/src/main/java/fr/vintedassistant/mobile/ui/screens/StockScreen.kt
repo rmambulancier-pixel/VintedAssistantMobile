@@ -86,6 +86,8 @@ class StockActions(
     val markReceived: (orderId: Long) -> Unit,
     /** Mise en vente express de toutes les pièces reçues sans fiche. */
     val expressAll: () -> Unit = {},
+    /** Inventaire : compter ce qu'on a en main et corriger les écarts. */
+    val inventory: () -> Unit = {},
 )
 
 @Composable
@@ -161,6 +163,9 @@ fun StockScreen(
             return@LazyColumn
         }
         item { StockSummary(stock, articles, sales) }
+        item {
+            OutlinedButton(onClick = actions.inventory, modifier = Modifier.fillMaxWidth()) { Text("Faire l'inventaire (compter mes bijoux)") }
+        }
         item {
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
@@ -326,7 +331,7 @@ private fun StockSummary(stock: StockOverview, articles: List<Article>, sales: L
             }
             if (board.neverReceived > 0 || board.withdrawn > 0) {
                 HorizontalDivider()
-                if (board.neverReceived > 0) SummaryLine("Jamais reçues du fournisseur", board.neverReceived, hint = "hors stock")
+                if (board.neverReceived > 0) SummaryLine("Manquantes", board.neverReceived, hint = "jamais reçues ou perdues, hors stock")
                 if (board.withdrawn > 0) SummaryLine("Retirées de Vinted", board.withdrawn)
             }
             val outside = stock.unlinked

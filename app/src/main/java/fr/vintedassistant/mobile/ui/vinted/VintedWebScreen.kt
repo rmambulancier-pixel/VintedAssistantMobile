@@ -102,6 +102,7 @@ fun VintedWebScreen(
     onLinkArticle: (Long, String) -> Unit,
     onClose: () -> Unit,
     queue: List<Long> = emptyList(),
+    origins: Map<Long, fr.vintedassistant.mobile.ui.PieceOrigin> = emptyMap(),
 ) {
     val context = LocalContext.current
     val session = remember { WebSession() }
@@ -332,11 +333,15 @@ fun VintedWebScreen(
             }
             Box {
                 OutlinedButton(onClick = { menu = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(article?.let { "${it.title} • ${Money.formatEuros(it.priceCents)}" } ?: "Choisir l'article à publier")
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        article?.let { fr.vintedassistant.mobile.ui.PhotoThumb(it.photos.firstOrNull() ?: origins[it.id]?.supplierImage, size = 40.dp) }
+                        Text(article?.let { "${it.title} • ${Money.formatEuros(it.priceCents)}" + (origins[it.id]?.variant?.takeIf { v -> v.isNotBlank() }?.let { v -> " • $v" } ?: "") }
+                            ?: "Choisir l'article à publier")
+                    }
                 }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    candidates.forEach { a ->
-                        DropdownMenuItem(text = { Text(a.title) }, onClick = { selectedId = a.id; menu = false; photosReady = 0; session.pendingPhotos = emptyList() })
+                if (menu) {
+                    fr.vintedassistant.mobile.ui.ArticlePickerDialog(candidates, origins, onDismiss = { menu = false }) { a ->
+                        selectedId = a.id; menu = false; photosReady = 0; session.pendingPhotos = emptyList()
                     }
                 }
             }

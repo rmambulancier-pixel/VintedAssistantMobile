@@ -234,6 +234,21 @@ class PurchaseRepository(
         }
     }
 
+    /**
+     * Inventaire : applique un manque constaté. Les pièces sans fiche sont déclarées manquantes (hors stock,
+     * port réparti à nouveau), puis les brouillons en trop passent « Retiré » (réversible, rien n'est supprimé).
+     */
+    suspend fun applyShortfall(s: fr.vintedassistant.mobile.domain.Inventory.Shortfall) {
+        s.missing.forEach { (itemId, k) ->
+            val item = dao.getItem(itemId) ?: return@forEach
+            setMissing(itemId, item.missing + k)
+        }
+        val now = clock()
+        s.withdrawDrafts.forEach { a ->
+            articleDao.getById(a.id)?.let { articleDao.update(it.copy(status = ArticleStatus.WITHDRAWN.label, updatedAt = now)) }
+        }
+    }
+
     /** Détache l'article ; son coût d'achat est conservé (modifiable à la main). */
     suspend fun unlink(articleId: Long) {
         val article = articleDao.getById(articleId) ?: return
