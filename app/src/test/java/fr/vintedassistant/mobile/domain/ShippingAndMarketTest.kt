@@ -244,3 +244,38 @@ class EtaTest {
         org.junit.Assert.assertFalse(MorningBrief.etaReached("", d))
     }
 }
+
+class StockBoardTest {
+    @Test
+    fun piecesFallIntoExactlyOneBlock() {
+        val today = java.time.LocalDate.of(2026, 11, 10)
+        val received = PurchaseOrder(1, "N", "A", 0, 0, 0, 0, listOf(
+            PurchaseItem(1, 1, "Collier tennis", null, 0, 6, 70, 5, "", "NH1"),
+            PurchaseItem(2, 1, "Bracelet fleurs", null, 0, 1, 37, 0, "", "NH2", missing = 1),
+        ))
+        val coming = PurchaseOrder(2, "N", "B", 1000, 0, 0, 0, listOf(PurchaseItem(3, 2, "Collier chapelet", null, 0, 12, 200, 0, "", "NH3")),
+            received = false, deliveryEta = "Thur, Dec 03")
+        val arts = listOf(
+            Article(1, "t1", 70, 800, ArticleStatus.ONLINE, 0, purchaseItemId = 1),
+            Article(2, "t2", 70, 800, ArticleStatus.DRAFT, 0, purchaseItemId = 1),
+            Article(3, "t3", 70, 800, ArticleStatus.SOLD, 0, purchaseItemId = 1),
+            Article(4, "t4", 70, 800, ArticleStatus.SOLD, 0, purchaseItemId = 1),
+            Article(5, "t5", 70, 800, ArticleStatus.SOLD, 0, purchaseItemId = 1),
+        )
+        val sales = listOf(
+            Sale(1, 3, "t3", "", 800, 70, 0, 0, null, shippingStatus = ShippingStatus.TO_SHIP),
+            Sale(2, 4, "t4", "", 800, 70, 0, 0, null, shippingStatus = ShippingStatus.SHIPPED),
+            Sale(3, 5, "t5", "", 800, 70, 0, 0, null, shippingStatus = ShippingStatus.DELIVERED),
+        )
+        val b = StockBoard.build(StockLedger.build(listOf(received, coming), arts), sales, today)
+        org.junit.Assert.assertEquals(1, b.toList)
+        org.junit.Assert.assertEquals(4, b.inHand) // 1 à mettre en vente + 1 brouillon + 1 en ligne + 1 colis à préparer
+        org.junit.Assert.assertEquals(12, b.restocking)
+        org.junit.Assert.assertEquals(1, b.shipping)
+        org.junit.Assert.assertEquals(1, b.done)
+        org.junit.Assert.assertEquals(1, b.neverReceived)
+        org.junit.Assert.assertEquals(18, b.total) // 6 + 12 commandées reçues ou attendues
+        org.junit.Assert.assertEquals(java.time.LocalDate.of(2026, 12, 3), b.orders.single().eta)
+        org.junit.Assert.assertTrue(StockBoard.etaLabel(b.orders.single(), today).contains("dans 23 jours"))
+    }
+}

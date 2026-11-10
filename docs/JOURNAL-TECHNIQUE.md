@@ -337,6 +337,12 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
 - **Alertes** (`SaleInsight`) : dernière pièce d'un modèle vendu au moins deux fois, vente en moins de 2 jours.
 - **Objectif mensuel** (barre sur l'accueil) et **export CSV du mois** (`Reports`).
 
+- **1.1** : bilan du stock en blocs exclusifs (`domain/StockBoard`) : « Chez moi » (à mettre en vente, en
+  préparation, en vente, réservées, vendues colis à préparer), « En réassort » (commandé chez le fournisseur, pas
+  encore arrivé, une ligne par commande avec la date d'arrivée en français et le décompte), « Vendues » (colis à
+  préparer, en route vers l'acheteur, terminées), puis jamais reçues et retirées. Le vocabulaire « en cours de
+  livraison » est réservé aux colis des acheteurs ; côté fournisseur on parle de réassort partout.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

@@ -1,5 +1,6 @@
 package fr.vintedassistant.mobile.ui.purchases
 
+import fr.vintedassistant.mobile.domain.StockBoard
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -239,7 +240,7 @@ fun PurchasesScreen(
             StatRow(
                 "Dépensé" to euros(list.sumOf { it.totalCents }),
                 "Pièces" to allItems.sumOf { it.quantity }.toString(),
-                "En livraison" to list.filter { !it.received }.sumOf { o -> o.items.sumOf { it.quantity } }.toString(),
+                "En réassort" to list.filter { !it.received }.sumOf { o -> o.items.sumOf { it.quantity } }.toString(),
             )
         }
         item {
@@ -288,8 +289,8 @@ fun PurchasesScreen(
                         }
                     } else {
                         Text(
-                            "En cours de livraison" + (if (order.deliveryEta.isNotBlank()) ", prévue ${order.deliveryEta}" else "") +
-                                ". Les pièces ne pourront être mises en vente qu'à réception.",
+                            "En réassort : commande pas encore arrivée" + (StockBoard.etaDate(order.deliveryEta, java.time.LocalDate.now())?.let { ", prévue le " + it.format(java.time.format.DateTimeFormatter.ofPattern("EEEE d MMMM", java.util.Locale.FRANCE)) } ?: if (order.deliveryEta.isNotBlank()) ", prévue ${order.deliveryEta}" else "") +
+                                ". Les pièces seront à mettre en vente à l'arrivée.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary,
                         )

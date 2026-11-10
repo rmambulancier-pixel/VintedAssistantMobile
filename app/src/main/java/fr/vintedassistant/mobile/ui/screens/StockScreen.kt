@@ -2,6 +2,9 @@
 
 package fr.vintedassistant.mobile.ui.screens
 
+import androidx.compose.material3.HorizontalDivider
+import fr.vintedassistant.mobile.domain.Sale
+import fr.vintedassistant.mobile.domain.StockBoard
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -93,6 +96,7 @@ fun StockScreen(
     onDismissMessage: () -> Unit,
     modifier: Modifier,
     actions: StockActions,
+    sales: List<Sale> = emptyList(),
 ) {
     var view by rememberSaveable { mutableStateOf(StockView.ONLINE) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -156,7 +160,7 @@ fun StockScreen(
             item { CircularProgressIndicator() }
             return@LazyColumn
         }
-        item { StockSummary(stock, articles) }
+        item { StockSummary(stock, articles, sales) }
         item {
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
@@ -194,7 +198,7 @@ fun StockScreen(
             item {
                 Text(
                     "Pièces reçues qui n'ont encore aucune fiche : ${stock.notListed}, valeur d'achat ${Money.formatEuros(stock.notListedValueCents)}." +
-                        if (stock.inTransit > 0) " Puis les pièces en cours de livraison : ${stock.inTransit}, " +
+                        if (stock.inTransit > 0) " Puis les pièces en réassort : ${stock.inTransit}, " +
                             "${Money.formatEuros(stock.inTransitValueCents)}, à mettre en vente à réception." else "",
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -266,52 +270,105 @@ fun StockScreen(
     }
 }
 
-/** Bilan pièce par pièce : d'où vient chaque bijou et où il en est. */
+/** Bilan pièce par pièce, en blocs qui ne se recouvrent pas : chez moi, en réassort, en route, terminées. */
 @Composable
-private fun StockSummary(stock: StockOverview, articles: List<Article>) {
+private fun StockSummary(stock: StockOverview, articles: List<Article>, sales: List<Sale>) {
+    val today = remember { java.time.LocalDate.now() }
+    val board = remember(stock, sales) { StockBoard.build(stock, sales, today) }
+    val orderDate = remember { DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.FRANCE) }
     ElevatedCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Mon stock", style = MaterialTheme.typography.titleSmall)
-            if (stock.bought == 0) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (stock.bought == 0 && articles.isEmpty()) {
+                Text("Mon stock", style = MaterialTheme.typography.titleSmall)
                 Text(
                     "Aucun achat enregistré : importe tes commandes fournisseur pour suivre aussi les bijoux pas encore mis en vente.",
                     style = MaterialTheme.typography.bodySmall,
                 )
-            } else {
-                Text("${stock.bought} pièce(s) achetée(s) :", style = MaterialTheme.typography.bodyMedium)
-                if (stock.inTransit > 0) SummaryLine("En cours de livraison", stock.inTransit)
-                SummaryLine("Reçues, pas encore en vente", stock.notListed, highlight = true)
-                SummaryLine("En brouillon", stock.drafts)
-                SummaryLine("En ligne ou réservées", stock.forSale)
-                SummaryLine("Vendues", stock.sold)
-                if (stock.withdrawn > 0) SummaryLine("Retirées de Vinted", stock.withdrawn)
+                return@Column
+            }
+            SummaryBlock(
+                title = "Chez moi",
+                total = board.inHand,
+                detail = "valeur d'achat ${Money.formatEuros(board.inHandCostCents)}",
+                accent = MaterialTheme.colorScheme.primary,
+            ) {
+                SummaryLine("À mettre en vente", board.toList, highlight = true, hint = "reçues, sans annonce")
+                SummaryLine("En préparation", board.drafts, hint = "brouillons")
+                SummaryLine("En vente sur Vinted", board.online, hint = if (board.online > 0) "affiché ${Money.formatEuros(board.onSaleValueCents)}" else null)
+                if (board.reserved > 0) SummaryLine("Réservées", board.reserved)
+                SummaryLine("Vendues, colis à préparer", board.toShip, highlight = board.toShip > 0, warn = true)
+            }
+            HorizontalDivider()
+            SummaryBlock(
+                title = "En réassort",
+                total = board.restocking,
+                detail = if (board.restocking > 0) "commandées, pas encore arrivées • ${Money.formatEuros(board.restockCostCents)}" else "aucune commande en attente",
+                accent = MaterialTheme.colorScheme.tertiary,
+            ) {
+                board.orders.forEach { o ->
+                    Text(
+                        "• ${o.pieces} pièce(s), commande du ${orderDate.format(java.util.Date(o.orderedAt))} : ${StockBoard.etaLabel(o, today)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (o.eta != null && o.eta.isBefore(today)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            HorizontalDivider()
+            SummaryBlock(
+                title = "Vendues",
+                total = board.sold,
+                detail = null,
+                accent = MaterialTheme.colorScheme.secondary,
+            ) {
+                SummaryLine("Colis à préparer", board.toShip, hint = "encore chez moi")
+                SummaryLine("En route vers l'acheteur", board.shipping, hint = "expédiées")
+                SummaryLine("Terminées", board.done, hint = "livrées")
+            }
+            if (board.neverReceived > 0 || board.withdrawn > 0) {
+                HorizontalDivider()
+                if (board.neverReceived > 0) SummaryLine("Jamais reçues du fournisseur", board.neverReceived, hint = "hors stock")
+                if (board.withdrawn > 0) SummaryLine("Retirées de Vinted", board.withdrawn)
             }
             val outside = stock.unlinked
             if (outside.isNotEmpty()) {
-                val inStock = outside.count { it.status.inStock }
-                val sold = outside.count { it.status == ArticleStatus.SOLD }
                 Text(
-                    "En plus : ${outside.size} fiche(s) sans achat rattaché ($inStock en stock, $sold vendue(s)). Vue « Sans achat ».",
+                    "Dont ${outside.size} fiche(s) sans achat rattaché : coût d'achat à vérifier (vue « Sans achat »).",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
-            }
-            if (articles.isNotEmpty() && stock.bought == 0) {
-                Text("${articles.size} fiche(s) au total.", style = MaterialTheme.typography.bodySmall)
             }
         }
     }
 }
 
 @Composable
-private fun SummaryLine(label: String, value: Int, highlight: Boolean = false) {
-    Row(Modifier.fillMaxWidth()) {
-        Text("• $label", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+private fun SummaryBlock(title: String, total: Int, detail: String?, accent: androidx.compose.ui.graphics.Color, content: @Composable () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.Bottom) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = accent, fontWeight = FontWeight.Bold)
+            detail?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        Text(total.toString(), style = MaterialTheme.typography.headlineSmall, color = accent, fontWeight = FontWeight.Bold)
+    }
+    content()
+}
+
+@Composable
+private fun SummaryLine(label: String, value: Int, highlight: Boolean = false, hint: String? = null, warn: Boolean = false) {
+    Row(Modifier.fillMaxWidth().padding(start = 8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyMedium)
+            hint?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline) }
+        }
         Text(
             value.toString(),
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (highlight) FontWeight.Bold else FontWeight.Normal,
-            color = if (highlight && value > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = if (highlight && value > 0) FontWeight.Bold else FontWeight.Normal,
+            color = when {
+                warn && value > 0 -> MaterialTheme.colorScheme.error
+                highlight && value > 0 -> MaterialTheme.colorScheme.primary
+                else -> MaterialTheme.colorScheme.onSurface
+            },
         )
     }
 }
@@ -343,7 +400,7 @@ private fun ProductCard(
                         fontWeight = FontWeight.Bold,
                     )
                     if (product.inTransit > 0) Text(
-                        "${product.inTransit} pièce(s) en cours de livraison",
+                        "${product.inTransit} pièce(s) en réassort",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                     )
@@ -366,7 +423,7 @@ private fun ProductCard(
                     )
                 } else {
                     Text(
-                        "Commande du $date : ${lot.quantity} en livraison" +
+                        "Commande du $date : ${lot.quantity} en réassort" +
                             (if (lot.deliveryEta.isNotBlank()) " (prévue ${lot.deliveryEta})" else "") +
                             ", revient ${Money.formatEuros(lot.landedUnitCents)} pièce",
                         style = MaterialTheme.typography.bodySmall,
@@ -455,7 +512,7 @@ private fun ColumnScope.StockFooter(
     if (article.status != ArticleStatus.SOLD) return
     if (product.notListed == 0 && product.inTransit > 0) {
         Text(
-            "${product.inTransit} en cours de livraison : remise en vente possible à réception.",
+            "${product.inTransit} en réassort : mise en vente possible à l'arrivée.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.primary,
         )

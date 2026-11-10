@@ -19,6 +19,8 @@ data class StockLot(
     /** Faux tant que la commande est en cours de livraison. */
     val received: Boolean = true,
     val deliveryEta: String = "",
+    /** Pièces commandées jamais reçues (exclues de [quantity]). */
+    val missing: Int = 0,
 ) {
     /** Pièces de ce lot qui n'ont encore aucune fiche. */
     val remaining: Int get() = (quantity - linkedCount).coerceAtLeast(0)
@@ -133,7 +135,7 @@ object StockLedger {
                     itemId = i.id, orderId = o.id, orderRef = o.orderRef, supplier = o.supplier, orderedAt = o.orderedAt,
                     unitPriceCents = i.unitPriceCents, landedUnitCents = i.landedUnitCents,
                     quantity = i.delivered, linkedCount = byItem[i.id]?.size ?: 0,
-                    received = o.received, deliveryEta = o.deliveryEta,
+                    received = o.received, deliveryEta = o.deliveryEta, missing = i.missing,
                 )
             }
             val linked = entries.flatMap { (_, i) -> byItem[i.id].orEmpty() }

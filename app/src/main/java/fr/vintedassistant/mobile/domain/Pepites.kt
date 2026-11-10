@@ -97,22 +97,15 @@ object MorningBrief {
         val restock: Int, val favorites: Int, val arrivingOrders: Int,
     )
 
-    /** Vrai si la date de livraison annoncée par le fournisseur (« Tues, Dec 01 ») est atteinte ou dépassée. */
-    fun etaReached(eta: String, today: java.time.LocalDate): Boolean {
-        val m = Regex("(?i)(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?\\s+(\\d{1,2})").find(eta) ?: return false
-        val month = listOf("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec").indexOf(m.groupValues[1].lowercase()) + 1
-        val day = m.groupValues[2].toInt()
-        var date = runCatching { java.time.LocalDate.of(today.year, month, day) }.getOrNull() ?: return false
-        // Une date de janvier lue en décembre concerne l'année suivante.
-        if (date.isBefore(today.minusMonths(6))) date = date.plusYears(1)
-        return !date.isAfter(today)
-    }
+    /** Vrai si la date d'arrivée annoncée par le fournisseur (« Tues, Dec 01 ») est atteinte ou dépassée. */
+    fun etaReached(eta: String, today: java.time.LocalDate): Boolean =
+        StockBoard.etaDate(eta, today)?.let { !it.isAfter(today) } ?: false
 
     fun lines(i: Input): List<String> = buildList {
         if (i.lateParcels > 0) add("${i.lateParcels} colis en retard sur le délai Vinted : à déposer en priorité.")
         else if (i.urgentParcels > 0) add("${i.urgentParcels} colis à déposer aujourd'hui au plus tard.")
         else if (i.toShip > 0) add("${i.toShip} colis à expédier.")
-        if (i.arrivingOrders > 0) add("Commande fournisseur attendue : marque-la reçue à l'arrivée, puis mise en vente express.")
+        if (i.arrivingOrders > 0) add("Réassort attendu aujourd'hui : à l'arrivée du colis, marque la commande reçue, puis mise en vente express.")
         if (i.notListed > 0) add("${i.notListed} pièce(s) en stock jamais mise(s) en vente.")
         if (i.toRepublish > 0) add("${i.toRepublish} annonce(s) à republier.")
         if (i.priceDrops > 0) add("${i.priceDrops} baisse(s) de prix prête(s) à valider.")

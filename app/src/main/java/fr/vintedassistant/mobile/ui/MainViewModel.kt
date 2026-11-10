@@ -87,6 +87,11 @@ class MainViewModel(
             fr.vintedassistant.mobile.domain.DataAudit.findings(a, s, st)
         }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** Stock en blocs : chez moi, en réassort, en route vers l'acheteur, terminées. */
+    val board: StateFlow<fr.vintedassistant.mobile.domain.StockBoard?> =
+        combine(stock, repository.sales, clock) { st, s, _ -> st?.let { fr.vintedassistant.mobile.domain.StockBoard.build(it, s) } }
+            .flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     /** Bijoux à racheter : vendus au moins deux fois, presque plus de stock. */
     val restock: StateFlow<List<fr.vintedassistant.mobile.domain.Restock.Advice>> =
         combine(stock, repository.sales) { st, s -> if (st == null) emptyList() else fr.vintedassistant.mobile.domain.Restock.advise(st, s) }
@@ -284,7 +289,7 @@ class MainViewModel(
 
     fun setOrderReceived(orderId: Long, received: Boolean) = launchSafely("Mise à jour de la commande impossible.") {
         purchases.setReceived(orderId, received)
-        _message.value = if (received) "Commande reçue : ses pièces peuvent être mises en vente." else "Commande remise en cours de livraison."
+        _message.value = if (received) "Commande reçue : ses pièces peuvent être mises en vente." else "Commande remise en réassort (pas encore arrivée)."
     }
 
     fun unlinkPurchase(articleId: Long) = launchSafely("Détachement impossible.") { purchases.unlink(articleId) }

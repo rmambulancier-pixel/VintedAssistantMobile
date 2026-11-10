@@ -85,7 +85,7 @@ object DataAudit {
         if (stock != null && stock.bought > 0) {
             appendLine()
             appendLine("STOCK (pièces achetées : ${stock.bought})")
-            appendLine("- en cours de livraison : ${stock.inTransit}")
+            appendLine("- en réassort (commandées, pas encore arrivées) : ${stock.inTransit}")
             appendLine("- reçues, pas encore en vente : ${stock.notListed}")
             appendLine("- en brouillon : ${stock.drafts}")
             appendLine("- en ligne ou réservées : ${stock.forSale}")

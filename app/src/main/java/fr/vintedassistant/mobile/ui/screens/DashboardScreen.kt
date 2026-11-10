@@ -54,6 +54,7 @@ fun DashboardScreen(
     restock: List<Restock.Advice> = emptyList(),
     onOpenPurchases: () -> Unit = {},
     monthlyGoalEuros: Int = 0,
+    board: fr.vintedassistant.mobile.domain.StockBoard? = null,
 ) {
     var openFinding by remember { mutableStateOf<String?>(null) }
     val now = System.currentTimeMillis()
@@ -186,7 +187,7 @@ fun DashboardScreen(
                             Text(r.title, style = MaterialTheme.typography.titleSmall, maxLines = 2)
                             Text(
                                 "${r.sold} vendus" + (r.averageDays?.let { " en ${String.format(Locale.FRANCE, "%.0f", it)} j en moyenne" } ?: "") +
-                                    " • reste ${r.remaining}" + if (r.inTransit > 0) " (en livraison)" else "",
+                                    " • reste ${r.remaining}" + if (r.inTransit > 0) " (en réassort)" else "",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             Text(
@@ -203,22 +204,38 @@ fun DashboardScreen(
             item { OutlinedButton(onClick = onOpenPurchases, modifier = Modifier.fillMaxWidth()) { Text("Ouvrir les achats fournisseur") } }
         }
         item { SectionTitle("Stock") }
-        item {
-            StatRow(
-                "En stock" to stats.stockCount.toString(),
-                "En ligne" to stats.onlineCount.toString(),
-                "Brouillons" to stats.draftCount.toString(),
-            )
+        if (board != null) {
+            item {
+                StatRow(
+                    "Chez moi" to board.inHand.toString(),
+                    "En vente" to (board.online + board.reserved).toString(),
+                    "En réassort" to board.restocking.toString(),
+                )
+            }
+            item {
+                StatRow(
+                    "À mettre en vente" to (board.toList + board.drafts).toString(),
+                    "En route vers l'acheteur" to board.shipping.toString(),
+                )
+            }
+        } else {
+            item {
+                StatRow(
+                    "Fiches en stock" to stats.stockCount.toString(),
+                    "En ligne" to stats.onlineCount.toString(),
+                    "Brouillons" to stats.draftCount.toString(),
+                )
+            }
         }
         item {
             StatRow(
-                "Valeur d'achat" to Money.formatEuros(stats.stockCostCents),
+                "Valeur d'achat en main" to Money.formatEuros(board?.inHandCostCents ?: stats.stockCostCents),
                 "Marge potentielle" to Money.formatEuros(stats.potentialMarginCents),
             )
         }
         item {
             StatRow(
-                "À expédier" to stats.toShipCount.toString(),
+                "Colis à préparer" to stats.toShipCount.toString(),
                 "Délai moyen de vente" to (stats.averageDaysToSell?.let { String.format(Locale.FRANCE, "%.1f j", it) } ?: "—"),
             )
         }
