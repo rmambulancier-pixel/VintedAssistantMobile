@@ -366,6 +366,12 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   commande) écartées à l'import et retirées au démarrage. Dates d'arrivée du réassort en français. CI : envoi des
   artefacts non bloquant.
 
+- **1.4** : tableau de bord refait (`domain/Charts`, `ui/screens/DashboardCharts`, `ui/Theme`). Carte principale
+  (chiffre d'affaires du mois, bénéfice, ventes, marge, objectif, projection), graphique en barres 7 jours, 30 jours
+  ou 6 mois (Canvas, sans bibliothèque), « Ce qui rapporte vraiment » (bijoux par bénéfice net, regroupés par
+  achat), types de bijoux en barres. Thème Material You : couleurs du fond d'écran (Android 12+) et mode sombre
+  automatique. Catégories saisies ramenées au type reconnu (« Tendance Colliers » compte dans « Colliers »).
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

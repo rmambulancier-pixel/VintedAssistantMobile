@@ -25,5 +25,7 @@ object JewelryCategory {
     }
 
     /** Catégorie à afficher : celle saisie, sinon celle déduite du titre, sinon « Sans catégorie ». */
-    fun of(category: String, title: String): String = category.ifBlank { guess(title) ?: "Sans catégorie" }
+    /** Une catégorie saisie comme « Tendance Colliers » est ramenée au type reconnu (« Colliers »). */
+    fun of(category: String, title: String): String =
+        if (category.isBlank()) guess(title) ?: "Sans catégorie" else guess(category) ?: category
 }

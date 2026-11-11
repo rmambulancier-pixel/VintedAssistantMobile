@@ -340,3 +340,30 @@ class StockRegisterTest {
         org.junit.Assert.assertFalse(SupplierLines.suspicious("Collier chaîne de tennis argent en métal avec incrustation en zircon"))
     }
 }
+
+class ChartsTest {
+    private val zone = java.time.ZoneId.of("Europe/Paris")
+    private fun at(m: Int, d: Int) = java.time.LocalDateTime.of(2026, m, d, 12, 0).atZone(zone).toInstant().toEpochMilli()
+
+    @Test
+    fun seriesAndTopProducts() {
+        val order = PurchaseOrder(1, "N", "A", 0, 0, 0, 0, listOf(PurchaseItem(1, 1, "Collier tennis", null, 0, 2, 70, 2, "", "NH1")))
+        val arts = listOf(Article(1, "Tennis A", 70, 800, ArticleStatus.SOLD, 0, purchaseItemId = 1), Article(2, "Tennis B", 70, 900, ArticleStatus.SOLD, 0, purchaseItemId = 1))
+        val sales = listOf(
+            Sale(1, 1, "Tennis A", "", 800, 70, 0, at(11, 9), null),
+            Sale(2, 2, "Tennis B", "", 900, 70, 0, at(11, 11), null),
+            Sale(3, null, "Bague", "", 500, 0, 0, at(10, 20), null),
+        )
+        val days = Charts.daily(sales, 7, at(11, 11), zone)
+        org.junit.Assert.assertEquals(7, days.size)
+        org.junit.Assert.assertEquals(900L, days.last().revenueCents)
+        org.junit.Assert.assertEquals(800L, days[4].revenueCents)
+        val months = Charts.monthly(sales, 0, 3, at(11, 11), zone)
+        org.junit.Assert.assertEquals(listOf(0L, 500L, 1700L), months.map { it.revenueCents })
+        org.junit.Assert.assertEquals("nov", months.last().label)
+        val top = Charts.topProducts(StockLedger.build(listOf(order), arts), sales, 0)
+        org.junit.Assert.assertEquals(2, top.size)
+        org.junit.Assert.assertEquals(2, top[0].sold)
+        org.junit.Assert.assertEquals(1560L, top[0].netCents)
+    }
+}

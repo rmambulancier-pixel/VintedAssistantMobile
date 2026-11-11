@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) applyIntent(intent)
         setContent {
-            MaterialTheme {
+            fr.vintedassistant.mobile.ui.VintedTheme {
                 AppRoot(initialTab = initialTab, tabRequest = tabRequest, sharedLink = sharedLink, onSharedLinkHandled = { sharedLink = null })
             }
         }

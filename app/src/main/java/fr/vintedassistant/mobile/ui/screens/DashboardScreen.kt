@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import fr.vintedassistant.mobile.domain.DataAudit
+import fr.vintedassistant.mobile.domain.Charts
 import fr.vintedassistant.mobile.domain.Restock
 import fr.vintedassistant.mobile.ui.PhotoThumb
 import fr.vintedassistant.mobile.domain.Sale
@@ -55,6 +56,7 @@ fun DashboardScreen(
     onOpenPurchases: () -> Unit = {},
     monthlyGoalEuros: Int = 0,
     board: fr.vintedassistant.mobile.domain.StockBoard? = null,
+    stock: fr.vintedassistant.mobile.domain.StockOverview? = null,
 ) {
     var openFinding by remember { mutableStateOf<String?>(null) }
     val now = System.currentTimeMillis()
@@ -108,46 +110,22 @@ fun DashboardScreen(
                 }
             }
         }
-        item { SectionTitle("Ce mois-ci") }
+        item { HeroCard(stats, monthlyGoalEuros, Restock.projection(sales, now)) }
         item {
-            StatRow(
-                "Ventes" to stats.monthSalesCount.toString(),
-                "Chiffre d'affaires" to Money.formatEuros(stats.monthRevenueCents),
-                "Bénéfice net" to Money.formatEuros(stats.monthNetCents),
-            )
+            val daily = remember(sales) { Charts.daily(sales, 30, now) }
+            val monthly = remember(sales, contributionRateBp) { Charts.monthly(sales, contributionRateBp, 6, now) }
+            RevenueChart(daily, monthly)
         }
-        item { SectionTitle("Depuis le début") }
+        item {
+            val top = remember(sales, stock, contributionRateBp) { Charts.topProducts(stock, sales, contributionRateBp) }
+            TopProductsCard(top)
+        }
         item {
             StatRow(
-                "Ventes" to stats.totalSalesCount.toString(),
+                "Ventes au total" to stats.totalSalesCount.toString(),
                 "Chiffre d'affaires" to Money.formatEuros(stats.totalRevenueCents),
                 "Bénéfice net" to Money.formatEuros(stats.totalNetCents),
             )
-        }
-        if (monthlyGoalEuros > 0) {
-            item {
-                val goal = monthlyGoalEuros * 100L
-                val ratio = (stats.monthRevenueCents.toFloat() / goal).coerceIn(0f, 1f)
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    androidx.compose.material3.LinearProgressIndicator(progress = { ratio }, modifier = Modifier.fillMaxWidth())
-                    Text(
-                        if (stats.monthRevenueCents >= goal) "Objectif du mois atteint : ${Money.formatEuros(stats.monthRevenueCents)} sur ${Money.formatEuros(goal)}."
-                        else "Objectif du mois : ${Money.formatEuros(stats.monthRevenueCents)} sur ${Money.formatEuros(goal)}, il manque ${Money.formatEuros(goal - stats.monthRevenueCents)}.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
-        }
-        if (stats.monthSalesCount > 0) {
-            item {
-                val p = Restock.projection(sales, now)
-                Text(
-                    "À ce rythme, le mois finira vers ${Money.formatEuros(p.projectedCents)} de chiffre d'affaires" +
-                        (if (p.lastMonthCents > 0) " (mois dernier : ${Money.formatEuros(p.lastMonthCents)})." else "."),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
         }
         if (stats.undatedSalesCount > 0) {
             item {
@@ -274,21 +252,17 @@ fun DashboardScreen(
         if (stats.categories.isEmpty()) {
             item { Text("Les statistiques apparaîtront après tes premières ventes.", style = MaterialTheme.typography.bodySmall) }
         } else {
-            items(stats.categories.take(8), key = { "cat-${it.category}" }) { c ->
-                ElevatedCard(Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column(Modifier.weight(1f)) {
-                            Text(c.category, style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                "${c.salesCount} vente(s) • CA ${Money.formatEuros(c.revenueCents)}",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        Column {
-                            Text("Net moyen ${Money.formatEuros(c.averageNetCents)}", style = MaterialTheme.typography.bodySmall)
-                            Text(
-                                c.averageDaysToSell?.let { "Vendu en ${String.format(Locale.FRANCE, "%.1f", it)} j" } ?: "",
-                                style = MaterialTheme.typography.bodySmall,
+            item {
+                val maxRevenue = stats.categories.maxOf { it.revenueCents }.coerceAtLeast(1)
+                ElevatedCard(Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        stats.categories.take(8).forEach { c ->
+                            BarRow(
+                                title = c.category,
+                                detail = "${c.salesCount} vente(s) • net moyen ${Money.formatEuros(c.averageNetCents)}" +
+                                    (c.averageDaysToSell?.let { " • vendu en ${String.format(Locale.FRANCE, "%.1f", it)} j" } ?: ""),
+                                value = Money.formatEuros(c.revenueCents),
+                                fraction = c.revenueCents.toFloat() / maxRevenue,
                             )
                         }
                     }
