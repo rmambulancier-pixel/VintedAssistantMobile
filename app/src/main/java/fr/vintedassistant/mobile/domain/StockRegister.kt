@@ -184,7 +184,6 @@ object SupplierLines {
     )
 
     fun suspicious(name: String): Boolean {
-        val n = name.trim()
-        return n.length < 12 || SUMMARY.containsMatchIn(n)
+        return SUMMARY.containsMatchIn(name.trim())
     }
 }
