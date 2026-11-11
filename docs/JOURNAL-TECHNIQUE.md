@@ -350,6 +350,11 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   d'abord des pièces sans fiche manquantes, puis passe des brouillons à « Retiré » ; le reste (annonces en ligne)
   est signalé, jamais modifié d'office.
 
+- **1.2.1** : une fiche qui porte une vente ne peut plus être supprimée depuis la fiche (la vente perdait son achat
+  et son coût, et la pièce revenait à tort dans « à mettre en vente »). Ventes : filtre « À corriger », photo du
+  produit dans « Rattacher à un achat » ; accueil : bouton vers Ventes sur « Ventes sans fiche ». CI : artefacts
+  gardés 2 jours (quota de stockage GitHub atteint), anciens artefacts supprimés.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

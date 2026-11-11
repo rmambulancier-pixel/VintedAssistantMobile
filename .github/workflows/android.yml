@@ -54,7 +54,7 @@ jobs:
           name: test-report
           path: app/build/reports/tests/
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 2
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -62,7 +62,7 @@ jobs:
           name: VintedAssistantMobile-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 2
 
       - name: Schémas Room (à versionner)
         uses: actions/upload-artifact@v4
@@ -70,7 +70,7 @@ jobs:
           name: room-schemas
           path: app/schemas/
           if-no-files-found: ignore
-          retention-days: 14
+          retention-days: 2
 
   # Tests sur un vrai Android (émulateur) : base Room, migration 1 → 2, opérations du dépôt.
   instrumented-tests:
@@ -112,4 +112,4 @@ jobs:
           name: instrumented-test-report
           path: app/build/reports/androidTests/
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 2

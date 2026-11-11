@@ -71,6 +71,7 @@ fun SalesScreen(
     }
     val context = LocalContext.current
     var onlyToShip by rememberSaveable { mutableStateOf(false) }
+    var onlyOrphans by rememberSaveable { mutableStateOf(false) }
     var labelForSale by rememberSaveable { mutableStateOf<Long?>(null) }
     val pickLabel = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val saleId = labelForSale
@@ -84,13 +85,17 @@ fun SalesScreen(
             item { CircularProgressIndicator(Modifier.padding(16.dp)) }
             return@LazyColumn
         }
+        val orphans = sales.filter { it.counted && it.articleId == null }
         val now = System.currentTimeMillis()
         val toShip = sales.filter { it.shippingStatus == ShippingStatus.TO_SHIP }
             .sortedBy { ShippingDeadline.due(it, now)?.lastDay?.toEpochDay() ?: Long.MAX_VALUE }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {
-                item { FilterChip(selected = !onlyToShip, onClick = { onlyToShip = false }, label = { Text("Toutes (${sales.size})") }) }
-                item { FilterChip(selected = onlyToShip, onClick = { onlyToShip = true }, label = { Text("À expédier (${toShip.size})") }) }
+                item { FilterChip(selected = !onlyToShip && !onlyOrphans, onClick = { onlyToShip = false; onlyOrphans = false }, label = { Text("Toutes (${sales.size})") }) }
+                item { FilterChip(selected = onlyToShip, onClick = { onlyToShip = true; onlyOrphans = false }, label = { Text("À expédier (${toShip.size})") }) }
+                if (orphans.isNotEmpty()) item {
+                    FilterChip(selected = onlyOrphans, onClick = { onlyOrphans = true; onlyToShip = false }, label = { Text("À corriger (${orphans.size})") })
+                }
             }
         }
         val labels = toShip.mapNotNull { it.labelPath }
@@ -111,7 +116,7 @@ fun SalesScreen(
                 ) { Text("Partager les ${labels.size} bordereau(x) à expédier") }
             }
         }
-        val shown = if (onlyToShip) toShip else sales
+        val shown = if (onlyOrphans && orphans.isNotEmpty()) orphans else if (onlyToShip) toShip else sales
         if (shown.isEmpty()) {
             item {
                 Text(
@@ -235,6 +240,7 @@ private fun AttachPurchaseDialog(sale: Sale, orders: List<PurchaseOrder>, onDism
                     if (shown.isEmpty()) item { Text("Aucune pièce disponible.", style = MaterialTheme.typography.bodySmall) }
                     items(shown, key = { it.second.id }) { (o, i) ->
                         TextButton(onClick = { onPick(i.id) }, modifier = Modifier.fillMaxWidth()) {
+                            fr.vintedassistant.mobile.ui.PhotoThumb(i.imageFile, size = 48.dp, modifier = Modifier.padding(end = 8.dp))
                             Text(
                                 "${i.name.take(90)}\nCommande du ${dateFormat.format(Date(o.orderedAt))} • reste ${i.remaining} • coût ${Money.formatEuros(i.landedUnitCents)}",
                                 style = MaterialTheme.typography.bodySmall,

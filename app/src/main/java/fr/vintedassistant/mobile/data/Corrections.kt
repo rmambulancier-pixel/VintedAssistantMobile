@@ -63,7 +63,7 @@ class Corrections(
                     else -> {
                         currentLink(id)?.let { used[it] = (used[it] ?: 1) - 1 }
                         linkOf[id] = null
-                        Step(label, null) { articles.delete(id) }
+                        Step(label, null) { articles.delete(id, allowSold = true) }
                     }
                 }
             }

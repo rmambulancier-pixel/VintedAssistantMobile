@@ -186,6 +186,11 @@ class EditorViewModel(
             return
         }
         work("Suppression impossible.") {
+            if (repository.hasSale(id)) {
+                _info.value = "Cette fiche porte une vente : elle reste dans l'historique (stock, coût et bénéfice en dépendent). " +
+                    "Pour annuler la vente, passe-la à « Annulée » dans l'onglet Ventes."
+                return@work
+            }
             repository.delete(id)
             onDeleted()
         }

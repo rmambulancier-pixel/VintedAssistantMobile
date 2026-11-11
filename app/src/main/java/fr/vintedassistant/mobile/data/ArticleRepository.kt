@@ -167,7 +167,12 @@ class ArticleRepository(
     }
 
     /** Supprime l'article, ses photos et son journal. Les ventes passées sont conservées. */
-    suspend fun delete(id: Long): Int {
+    /** Vrai si la fiche porte une vente comptée : la supprimer ferait perdre le lien vente, achat et coût. */
+    suspend fun hasSale(id: Long): Boolean =
+        saleDao.forArticle(id).any { it.shippingStatus != ShippingStatus.CANCELLED.label }
+
+    suspend fun delete(id: Long, allowSold: Boolean = false): Int {
+        check(allowSold || !hasSale(id)) { "Cette fiche porte une vente : elle ne peut pas être supprimée." }
         val files = photoDao.forArticle(id).map { it.fileName }
         val deleted = db.withTransaction {
             photoDao.deleteForArticle(id)

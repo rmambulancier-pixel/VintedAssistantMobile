@@ -97,6 +97,9 @@ fun DashboardScreen(
                                     Text(line, style = MaterialTheme.typography.bodySmall)
                                 }
                             }
+                            if (f.title.startsWith("Ventes sans fiche")) {
+                                OutlinedButton(onClick = onOpenSales, modifier = Modifier.fillMaxWidth()) { Text("Corriger dans Ventes : « Rattacher à un achat »") }
+                            }
                             if (f.lines.size > 30) Text("… et ${f.lines.size - 30} autre(s).", style = MaterialTheme.typography.bodySmall)
                         } else {
                             Text("Appuie pour voir le détail.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)

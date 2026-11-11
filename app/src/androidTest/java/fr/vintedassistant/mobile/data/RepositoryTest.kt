@@ -121,7 +121,10 @@ class RepositoryTest {
         assertEquals(listOf("a.jpg", "b.jpg"), repo.articles.first().single().photos)
 
         repo.recordSale(id, SaleValidation.Valid(2000, 0, ""))
-        repo.delete(id)
+        // Une fiche qui porte une vente est protégée : suppression refusée sauf demande explicite.
+        val refused = try { repo.delete(id); false } catch (e: IllegalStateException) { true }
+        assertTrue(refused)
+        repo.delete(id, allowSold = true)
 
         assertTrue(repo.articles.first().isEmpty())
         assertEquals(0, db.photoDao().forArticle(id).size)
