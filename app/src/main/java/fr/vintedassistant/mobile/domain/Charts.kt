@@ -37,7 +37,7 @@ object Charts {
         }
     }
 
-    data class Top(val key: String, val title: String, val image: String?, val sold: Int, val revenueCents: Long, val netCents: Long, val averageDays: Double?)
+    data class Top(val key: String, val title: String, val image: String?, val sold: Int, val revenueCents: Long, val netCents: Long, val averageDays: Double?, val images: List<String> = listOfNotNull(image))
 
     /**
      * Bijoux classés par bénéfice net total. Les ventes sont regroupées par bijou acheté (toutes annonces
@@ -59,6 +59,7 @@ object Charts {
                     revenueCents = list.sumOf { it.salePriceCents },
                     netCents = list.sumOf { Finance.netCents(it, rateBp) },
                     averageDays = delays.takeIf { it.isNotEmpty() }?.average(),
+                    images = (p?.articles?.flatMap { it.photos }.orEmpty() + listOfNotNull(p?.imageFile)).distinct(),
                 )
             }
             .sortedByDescending { it.netCents }

@@ -146,7 +146,8 @@ fun DashboardScreen(
                 "Version ${appVersion(androidx.compose.ui.platform.LocalContext.current)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 24.dp),
             )
         }
     }

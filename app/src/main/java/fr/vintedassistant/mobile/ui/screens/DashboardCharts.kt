@@ -57,6 +57,25 @@ import java.util.Locale
 
 private val CARD = RoundedCornerShape(24.dp)
 
+/**
+ * Couleurs fixes des graphiques. Les couleurs dynamiques suivent le fond d'écran : avec un fond gris,
+ * tout devenait gris et les parts ne se distinguaient plus. Ces teintes restent lisibles en clair et en sombre.
+ */
+private object Viz {
+    val BLUE = Color(0xFF5B9BFF)
+    val GREEN = Color(0xFF34C38F)
+    val AMBER = Color(0xFFF5B54A)
+    val ROSE = Color(0xFFF2647A)
+    val VIOLET = Color(0xFFA78BFA)
+    val INK = Color(0xFF14161A)
+    val series = listOf(BLUE, GREEN, AMBER, ROSE, VIOLET)
+    val HERO = androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF1D3B8F), Color(0xFF4A2A8C)))
+}
+
+private fun plural(n: Int, one: String, many: String = one + "s") = "$n " + if (n > 1) many else one
+
+private fun days(d: Double): String = if (d < 1) "le jour même" else String.format(Locale.FRANCE, "en %.0f j", d)
+
 /** « 28 € » sans centimes pour les étiquettes de graphiques, « 7,50 € » au-dessous de 10 €. */
 private fun short(cents: Long): String = if (cents >= 1000 || cents % 100 == 0L) "${(cents + 50) / 100} €" else Money.formatEuros(cents)
 
@@ -67,15 +86,18 @@ private fun pct(v: Double): String = String.format(Locale.FRANCE, "%.0f %%", v)
 private fun Delta(change: Int?, against: String) {
     if (change == null) return
     val up = change >= 0
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = if (up) Color(0xFF1B8A3A).copy(alpha = 0.18f) else MaterialTheme.colorScheme.errorContainer,
-    ) {
+    val color = if (up) Viz.GREEN else Viz.ROSE
+    // Au-delà de +200 %, « ×9,7 » se lit mieux que « +867 % ».
+    val value = when {
+        change >= 200 -> String.format(Locale.FRANCE, "×%.1f", 1 + change / 100.0)
+        up -> "+$change %"
+        else -> "−${-change} %"
+    }
+    Surface(shape = RoundedCornerShape(12.dp), color = color.copy(alpha = 0.18f)) {
         Text(
-            (if (up) "▲ +" else "▼ ") + "$change % $against",
+            (if (up) "▲ " else "▼ ") + "$value $against",
             Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
-            color = if (up) Color(0xFF1B8A3A) else MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = color, maxLines = 1,
         )
     }
 }
@@ -106,26 +128,29 @@ private fun Ring(fraction: Float, label: String, sub: String, color: Color, trac
 fun HeroCard(stats: DashboardStats, goalEuros: Int, sales: List<fr.vintedassistant.mobile.domain.Sale>, now: Long) {
     val (cur, prev) = remember(sales, now / 3_600_000) { Charts.monthToDate(sales, now) }
     val projection = remember(sales, now / 3_600_000) { Restock.projection(sales, now) }
-    val on = MaterialTheme.colorScheme.onPrimaryContainer
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), shape = RoundedCornerShape(28.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    val on = Color.White
+    val today = java.time.Instant.ofEpochMilli(now).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+    val lastMonth = today.minusMonths(1).month.getDisplayName(java.time.format.TextStyle.SHORT, Locale.FRANCE)
+    val against = if (today.dayOfMonth == 1) "vs le 1er $lastMonth" else "vs 1er–${today.dayOfMonth} $lastMonth"
+    Card(colors = CardDefaults.cardColors(containerColor = Color.Transparent), shape = RoundedCornerShape(28.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.background(Viz.HERO).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Chiffre d'affaires du mois", style = MaterialTheme.typography.labelLarge, color = on)
+                    Text("Chiffre d'affaires du mois", style = MaterialTheme.typography.labelLarge, color = on.copy(alpha = 0.8f))
                     Text(Money.formatEuros(stats.monthRevenueCents), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = on)
-                    Delta(Charts.change(cur.revenueCents, prev.revenueCents), "vs le mois dernier à la même date")
+                    Delta(Charts.change(cur.revenueCents, prev.revenueCents), against)
                 }
                 if (goalEuros > 0) {
                     val goal = goalEuros * 100L
                     val f = stats.monthRevenueCents.toFloat() / goal
-                    Ring(f, pct(f * 100.0), "de ${goalEuros} €", MaterialTheme.colorScheme.primary, on.copy(alpha = 0.15f), on)
+                    Ring(f, pct(f * 100.0), "de ${goalEuros} €", if (f >= 1f) Viz.GREEN else Viz.AMBER, on.copy(alpha = 0.18f), on)
                 }
             }
             Row(Modifier.fillMaxWidth()) {
-                Kpi("Bénéfice net", Money.formatEuros(stats.monthNetCents), on, Modifier.weight(1f))
-                Kpi("Ventes", stats.monthSalesCount.toString(), on, Modifier.weight(0.7f))
-                Kpi("Marge", if (stats.monthRevenueCents > 0) "${stats.monthNetCents * 100 / stats.monthRevenueCents} %" else "—", on, Modifier.weight(0.7f))
-                Kpi("Vendu en", stats.averageDaysToSell?.let { String.format(Locale.FRANCE, "%.0f j", it) } ?: "—", on, Modifier.weight(0.7f))
+                Kpi("Bénéfice net", Money.formatEuros(stats.monthNetCents), Color(0xFF8FF0C4), Modifier.weight(1f), on.copy(alpha = 0.75f))
+                Kpi("Ventes", stats.monthSalesCount.toString(), on, Modifier.weight(0.7f), on.copy(alpha = 0.75f))
+                Kpi("Marge", if (stats.monthRevenueCents > 0) "${stats.monthNetCents * 100 / stats.monthRevenueCents} %" else "—", on, Modifier.weight(0.7f), on.copy(alpha = 0.75f))
+                Kpi("Vendu en", stats.averageDaysToSell?.let { String.format(Locale.FRANCE, "%.0f j", it) } ?: "—", on, Modifier.weight(0.7f), on.copy(alpha = 0.75f))
             }
             if (stats.monthSalesCount > 0) {
                 Text(
@@ -136,23 +161,23 @@ fun HeroCard(stats: DashboardStats, goalEuros: Int, sales: List<fr.vintedassista
                             append(if (stats.monthRevenueCents >= goal) " • objectif atteint" else " • reste ${Money.formatEuros(goal - stats.monthRevenueCents)} pour l'objectif")
                         }
                     },
-                    style = MaterialTheme.typography.bodySmall, color = on,
+                    style = MaterialTheme.typography.bodySmall, color = on.copy(alpha = 0.9f),
                 )
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(on.copy(alpha = 0.15f)))
             Text(
                 "Depuis le début : ${stats.totalSalesCount} ventes • ${Money.formatEuros(stats.totalRevenueCents)} • ${Money.formatEuros(stats.totalNetCents)} de bénéfice",
-                style = MaterialTheme.typography.labelMedium, color = on,
+                style = MaterialTheme.typography.labelMedium, color = on.copy(alpha = 0.8f),
             )
         }
     }
 }
 
 @Composable
-private fun Kpi(label: String, value: String, color: Color, modifier: Modifier) {
+private fun Kpi(label: String, value: String, color: Color, modifier: Modifier, labelColor: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
     Column(modifier) {
         Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = color, maxLines = 1)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = color, maxLines = 1)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = labelColor, maxLines = 1)
     }
 }
 
@@ -184,9 +209,10 @@ fun RevenueChart(daily: List<Charts.Day>, monthly: List<Charts.Month>, previousW
     val topIdx = bars.withIndex().filter { it.value.value > 0 }.sortedByDescending { it.value.value }.take(3).map { it.index }.toSet()
 
     val measurer = rememberTextMeasurer()
-    val primary = MaterialTheme.colorScheme.primary
-    val soft = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
-    val accent = MaterialTheme.colorScheme.tertiary
+    val primary = Viz.BLUE
+    val soft = Viz.BLUE.copy(alpha = 0.35f)
+    val accent = Viz.AMBER
+    val surface = MaterialTheme.colorScheme.surfaceContainerLow
     val empty = MaterialTheme.colorScheme.surfaceVariant
     val ink = MaterialTheme.colorScheme.onSurface
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -232,7 +258,7 @@ fun RevenueChart(daily: List<Charts.Day>, monthly: List<Charts.Month>, previousW
                     // 6 mois : la part de bénéfice dans la barre, en plein.
                     b.secondary?.takeIf { it > 0 && b.value > 0 }?.let { net ->
                         val nh = h * (net.toFloat() / b.value).coerceIn(0f, 1f)
-                        drawRoundRect(if (isSel) accent else primary, Offset(x, size.height - nh), Size(w, nh), CornerRadius((w / 2).coerceAtMost(14f)))
+                        drawRoundRect(if (isSel) accent else Viz.GREEN, Offset(x, size.height - nh), Size(w, nh), CornerRadius((w / 2).coerceAtMost(14f)))
                     }
                     val showValue = b.value > 0 && (n <= 12 || i in topIdx || isSel)
                     if (showValue) {
@@ -244,15 +270,19 @@ fun RevenueChart(daily: List<Charts.Day>, monthly: List<Charts.Month>, previousW
                 if (average > 0) {
                     val y = size.height - average / max * (chartH - 4f)
                     drawLine(muted, Offset(0f, y), Offset(size.width, y), strokeWidth = 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f)))
-                    val t = measurer.measure("moy. ${short(average)}", TextStyle(fontSize = 9.sp, color = muted))
-                    drawText(t, topLeft = Offset(size.width - t.size.width, (y - t.size.height - 2f).coerceAtLeast(0f)))
+                    // Étiquette sur fond plein, à gauche : elle ne passe plus derrière les barres.
+                    val t = measurer.measure("moy. ${short(average)}", TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ink))
+                    val pad = 4.dp.toPx()
+                    val top = (y - t.size.height - pad * 2 - 2f).coerceAtLeast(0f)
+                    drawRoundRect(surface, Offset(0f, top), Size(t.size.width + pad * 2, t.size.height + pad), CornerRadius(pad * 2))
+                    drawText(t, topLeft = Offset(pad, top + pad / 2))
                 }
             }
             Row(Modifier.fillMaxWidth()) {
                 bars.forEach { Text(it.axis, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, maxLines = 1, softWrap = false) }
             }
             Text(
-                selected?.let { bars.getOrNull(it)?.caption } ?: if (mode == 2) "Barre claire : chiffre d'affaires ; partie pleine : bénéfice. Touche une barre pour le détail." else "Touche une barre pour le détail du jour.",
+                selected?.let { bars.getOrNull(it)?.caption } ?: if (mode == 2) "Bleu clair : chiffre d'affaires ; vert : bénéfice. Touche une barre pour le détail." else "Touche une barre pour le détail du jour.",
                 style = MaterialTheme.typography.bodySmall,
                 color = if (selected != null) accent else muted,
                 fontWeight = if (selected != null) FontWeight.Bold else FontWeight.Normal,
@@ -267,7 +297,7 @@ fun CategoryDonut(categories: List<CategoryStats>) {
     if (categories.isEmpty()) return
     val shown = categories.take(5)
     val total = shown.sumOf { it.revenueCents }.coerceAtLeast(1)
-    val palette = listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary, MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.error, MaterialTheme.colorScheme.outline)
+    val palette = Viz.series
     ElevatedCard(Modifier.fillMaxWidth(), shape = CARD) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Ce qui se vend, par type", style = MaterialTheme.typography.titleMedium)
@@ -288,22 +318,23 @@ fun CategoryDonut(categories: List<CategoryStats>) {
                         Text("${shown.sumOf { it.salesCount }} ventes", style = MaterialTheme.typography.labelSmall)
                     }
                 }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     shown.forEachIndexed { i, c ->
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Box(Modifier.size(10.dp).clip(CircleShape).background(palette[i % palette.size]))
-                            Text(c.category, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1)
-                            Text(pct(c.revenueCents * 100.0 / total), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = palette[i % palette.size])
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Box(Modifier.size(10.dp).clip(CircleShape).background(palette[i % palette.size]))
+                                Text(c.category, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+                                Text(pct(c.revenueCents * 100.0 / total), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = palette[i % palette.size])
+                            }
+                            Text(
+                                "${short(c.revenueCents)} • ${plural(c.salesCount, "vente")} • ${Money.formatEuros(c.averageNetCents)}/pièce" +
+                                    (c.averageDaysToSell?.let { " • " + days(it) } ?: ""),
+                                Modifier.padding(start = 16.dp),
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                            )
                         }
                     }
                 }
-            }
-            shown.forEachIndexed { i, c ->
-                Text(
-                    "${c.category} : ${Money.formatEuros(c.revenueCents)} • ${c.salesCount} vente(s) • ${Money.formatEuros(c.averageNetCents)} net par pièce" +
-                        (c.averageDaysToSell?.let { " • part en ${String.format(Locale.FRANCE, "%.0f", it)} j" } ?: ""),
-                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
     }
@@ -324,28 +355,28 @@ fun TopProductsCard(top: List<Charts.Top>, totalNetCents: Long, restock: List<Re
             top.forEachIndexed { rank, t ->
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box {
-                        PhotoThumb(t.image, size = 52.dp)
-                        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) {
-                            Box(contentAlignment = Alignment.Center) { Text("${rank + 1}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold) }
+                        fr.vintedassistant.mobile.ui.PhotoThumbAny(t.images, t.title, size = 52.dp)
+                        Surface(shape = CircleShape, color = if (rank == 0) Viz.AMBER else Viz.INK.copy(alpha = 0.75f), modifier = Modifier.size(20.dp)) {
+                            Box(contentAlignment = Alignment.Center) { Text("${rank + 1}", style = MaterialTheme.typography.labelSmall, color = if (rank == 0) Viz.INK else Color.White, fontWeight = FontWeight.Bold) }
                         }
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(t.title, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1)
-                            Text(Money.formatEuros(t.netCents), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Text(Money.formatEuros(t.netCents), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Viz.GREEN)
                         }
                         Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
-                            Box(Modifier.fillMaxWidth((t.netCents.toFloat() / max).coerceIn(0.03f, 1f)).height(8.dp).clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.primary))
+                            Box(Modifier.fillMaxWidth((t.netCents.toFloat() / max).coerceIn(0.03f, 1f)).height(8.dp).clip(RoundedCornerShape(4.dp)).background(Viz.GREEN))
                         }
                         Text(
                             (if (totalNetCents > 0) "${t.netCents * 100 / totalNetCents} % du bénéfice • " else "") +
-                                "${t.sold} vendu(s) • ${Money.formatEuros(t.netCents / t.sold)} net/pièce" +
-                                (t.averageDays?.let { " • ${String.format(Locale.FRANCE, "%.0f", it)} j" } ?: ""),
+                                "${plural(t.sold, "vendu")} • ${Money.formatEuros(t.netCents / t.sold)}/pièce" +
+                                (t.averageDays?.let { " • " + days(it) } ?: ""),
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
                         )
                         if (t.key in restockKeys) {
-                            Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.errorContainer, onClick = onRestock) {
-                                Text("Épuisé : à racheter", Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                            Surface(shape = RoundedCornerShape(8.dp), color = Viz.ROSE.copy(alpha = 0.18f), onClick = onRestock) {
+                                Text("Épuisé : à racheter", Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Viz.ROSE)
                             }
                         }
                     }
@@ -355,7 +386,7 @@ fun TopProductsCard(top: List<Charts.Top>, totalNetCents: Long, restock: List<Re
             if (others.isNotEmpty()) {
                 Text(
                     "À racheter aussi : " + others.joinToString { it.title.take(30) },
-                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelMedium, color = Viz.ROSE,
                 )
             }
         }
@@ -369,9 +400,9 @@ fun TopProductsCard(top: List<Charts.Top>, totalNetCents: Long, restock: List<Re
 @Composable
 fun StockBar(board: StockBoard, potentialMarginCents: Long, stagnant: Int, onOpenStock: () -> Unit) {
     val parts = listOf(
-        Triple("À mettre en vente", board.toList + board.drafts, MaterialTheme.colorScheme.tertiary),
-        Triple("En vente", board.online + board.reserved, MaterialTheme.colorScheme.primary),
-        Triple("Colis à préparer", board.toShip, MaterialTheme.colorScheme.error),
+        Triple("À mettre en vente", board.toList + board.drafts, Viz.AMBER),
+        Triple("En vente", board.online + board.reserved, Viz.BLUE),
+        Triple("Colis à préparer", board.toShip, Viz.ROSE),
     )
     val total = board.inHand.coerceAtLeast(1)
     ElevatedCard(onClick = onOpenStock, modifier = Modifier.fillMaxWidth(), shape = CARD) {
@@ -386,7 +417,7 @@ fun StockBar(board: StockBoard, potentialMarginCents: Long, stagnant: Int, onOpe
             Row(Modifier.fillMaxWidth().height(22.dp).clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
                 parts.filter { it.second > 0 }.forEach { (_, n, c) ->
                     Box(Modifier.weight(n.toFloat() / total).height(22.dp).background(c), contentAlignment = Alignment.Center) {
-                        Text("$n", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.surface)
+                        Text("$n", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Viz.INK)
                     }
                 }
             }
@@ -394,13 +425,14 @@ fun StockBar(board: StockBoard, potentialMarginCents: Long, stagnant: Int, onOpe
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(Modifier.size(10.dp).clip(CircleShape).background(c))
                     Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                    Text("$n • ${pct(n * 100.0 / total)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    Text("$n", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    Text(pct(n * 100.0 / total), Modifier.width(48.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.End)
                 }
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
             Row(Modifier.fillMaxWidth()) {
                 Kpi("Achat en main", Money.formatEuros(board.inHandCostCents), MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
-                Kpi("Marge à venir", Money.formatEuros(potentialMarginCents), MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                Kpi("Marge à venir", Money.formatEuros(potentialMarginCents), Viz.GREEN, Modifier.weight(1f))
                 Kpi("En réassort", board.restocking.toString(), MaterialTheme.colorScheme.onSurface, Modifier.weight(0.8f))
             }
             Text(

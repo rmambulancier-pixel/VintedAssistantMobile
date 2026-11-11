@@ -111,6 +111,28 @@ fun PhotoThumb(fileName: String?, size: Dp = 64.dp, modifier: Modifier = Modifie
     }
 }
 
+/**
+ * Première photo lisible parmi plusieurs candidates (une photo peut avoir été supprimée avec sa fiche).
+ * Sans photo : un carré avec l'initiale, pas de « … ».
+ */
+@Composable
+fun PhotoThumbAny(names: List<String>, fallback: String, size: Dp = 52.dp, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val bitmap by produceState<Bitmap?>(initialValue = null, names) {
+        val store = context.container().photoStore
+        value = names.firstNotNullOfOrNull { store.thumbnail(it, 320) }
+    }
+    val shape = RoundedCornerShape(8.dp)
+    val current = bitmap
+    if (current != null) {
+        Image(current.asImageBitmap(), null, contentScale = ContentScale.Crop, modifier = modifier.size(size).clip(shape))
+    } else {
+        Box(modifier.size(size).clip(shape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+            Text(fallback.trim().take(1).uppercase(), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier) {
     Text(text, style = MaterialTheme.typography.titleMedium, modifier = modifier.padding(top = 8.dp))
