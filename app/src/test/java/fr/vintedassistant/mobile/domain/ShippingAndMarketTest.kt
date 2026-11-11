@@ -367,3 +367,22 @@ class ChartsTest {
         org.junit.Assert.assertEquals(1560L, top[0].netCents)
     }
 }
+
+class ChartsComparisonTest {
+    private val zone = java.time.ZoneId.of("Europe/Paris")
+    private fun at(m: Int, d: Int, h: Int = 12) = java.time.LocalDateTime.of(2026, m, d, h, 0).atZone(zone).toInstant().toEpochMilli()
+
+    @Test
+    fun monthToDateComparesTheSameDays() {
+        val sales = listOf(
+            Sale(1, null, "a", "", 1000, 0, 0, at(11, 5), null),
+            Sale(2, null, "b", "", 600, 0, 0, at(10, 8), null),
+            Sale(3, null, "c", "", 900, 0, 0, at(10, 20), null), // après le 11 octobre : hors comparaison
+        )
+        val (cur, prev) = Charts.monthToDate(sales, at(11, 11), zone)
+        org.junit.Assert.assertEquals(1000L, cur.revenueCents)
+        org.junit.Assert.assertEquals(600L, prev.revenueCents)
+        org.junit.Assert.assertEquals(66, Charts.change(1000, 600))
+        org.junit.Assert.assertNull(Charts.change(1000, 0))
+    }
+}

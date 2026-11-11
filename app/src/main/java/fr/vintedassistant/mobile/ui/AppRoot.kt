@@ -340,6 +340,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                     board = board,
                     stock = stock,
                     onOpenPurchases = { overlayIndex = Overlay.PURCHASES.ordinal },
+                    onOpenStock = { tabIndex = Tab.STOCK.ordinal },
                 )
                 Tab.STOCK -> StockScreen(
                     articles = articles,

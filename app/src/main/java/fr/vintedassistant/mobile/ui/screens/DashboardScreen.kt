@@ -57,6 +57,7 @@ fun DashboardScreen(
     monthlyGoalEuros: Int = 0,
     board: fr.vintedassistant.mobile.domain.StockBoard? = null,
     stock: fr.vintedassistant.mobile.domain.StockOverview? = null,
+    onOpenStock: () -> Unit = {},
 ) {
     var openFinding by remember { mutableStateOf<String?>(null) }
     val now = System.currentTimeMillis()
@@ -110,121 +111,22 @@ fun DashboardScreen(
                 }
             }
         }
-        item { HeroCard(stats, monthlyGoalEuros, Restock.projection(sales, now)) }
+        item { HeroCard(stats, monthlyGoalEuros, sales, now) }
         item {
-            val daily = remember(sales) { Charts.daily(sales, 30, now) }
-            val monthly = remember(sales, contributionRateBp) { Charts.monthly(sales, contributionRateBp, 6, now) }
-            RevenueChart(daily, monthly)
+            val daily = remember(sales, now / 3_600_000) { Charts.daily(sales, 30, now) }
+            val monthly = remember(sales, contributionRateBp, now / 3_600_000) { Charts.monthly(sales, contributionRateBp, 6, now) }
+            val prevWeek = remember(sales, now / 3_600_000) { Charts.daily(sales, 14, now).take(7).sumOf { it.revenueCents } }
+            val prevMonth = remember(sales, now / 3_600_000) { Charts.daily(sales, 60, now).take(30).sumOf { it.revenueCents } }
+            RevenueChart(daily, monthly, prevWeek, prevMonth)
         }
         item {
             val top = remember(sales, stock, contributionRateBp) { Charts.topProducts(stock, sales, contributionRateBp) }
-            TopProductsCard(top)
+            TopProductsCard(top, stats.totalNetCents, restock, onOpenPurchases)
         }
-        item {
-            StatRow(
-                "Ventes au total" to stats.totalSalesCount.toString(),
-                "Chiffre d'affaires" to Money.formatEuros(stats.totalRevenueCents),
-                "Bénéfice net" to Money.formatEuros(stats.totalNetCents),
-            )
-        }
-        if (stats.undatedSalesCount > 0) {
-            item {
-                Text(
-                    "Dont ${stats.undatedSalesCount} vente(s) importée(s) de Vinted sans date connue : " +
-                        "comptées depuis le début, pas dans le mois.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        }
-        if (stats.missingCostCount > 0) {
-            item {
-                Text(
-                    "${stats.missingCostCount} article(s) sans coût d'achat : marges et bénéfices surestimés tant qu'il n'est pas saisi.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-        }
-        item {
-            Text(
-                "Bénéfice net = prix de vente − coût d'achat − frais − cotisations (" +
-                    Finance.formatRate(contributionRateBp) + ", modifiable dans les réglages).",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        if (restock.isNotEmpty()) {
-            item { SectionTitle("À racheter (${restock.size})") }
-            item {
-                Text(
-                    "Tes bijoux vendus au moins deux fois et presque épuisés, les plus rentables d'abord.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            items(restock.take(6), key = { "restock-${it.key}" }) { r ->
-                ElevatedCard(Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        PhotoThumb(r.imageFile, size = 56.dp)
-                        Column(Modifier.weight(1f)) {
-                            Text(r.title, style = MaterialTheme.typography.titleSmall, maxLines = 2)
-                            Text(
-                                "${r.sold} vendus" + (r.averageDays?.let { " en ${String.format(Locale.FRANCE, "%.0f", it)} j en moyenne" } ?: "") +
-                                    " • reste ${r.remaining}" + if (r.inTransit > 0) " (en réassort)" else "",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                            Text(
-                                "Acheté ${Money.formatEuros(r.averageCostCents)}, vendu ${Money.formatEuros(r.averagePriceCents)} : " +
-                                    "marge ${Money.formatEuros(r.marginCents)} par pièce" +
-                                    (if (r.multiple >= 2) ", mise ×${String.format(Locale.FRANCE, "%.0f", r.multiple)}" else "") + ".",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    }
-                }
-            }
-            item { OutlinedButton(onClick = onOpenPurchases, modifier = Modifier.fillMaxWidth()) { Text("Ouvrir les achats fournisseur") } }
-        }
-        item { SectionTitle("Stock") }
-        if (board != null) {
-            item {
-                StatRow(
-                    "Chez moi" to board.inHand.toString(),
-                    "En vente" to (board.online + board.reserved).toString(),
-                    "En réassort" to board.restocking.toString(),
-                )
-            }
-            item {
-                StatRow(
-                    "À mettre en vente" to (board.toList + board.drafts).toString(),
-                    "En route vers l'acheteur" to board.shipping.toString(),
-                )
-            }
-        } else {
-            item {
-                StatRow(
-                    "Fiches en stock" to stats.stockCount.toString(),
-                    "En ligne" to stats.onlineCount.toString(),
-                    "Brouillons" to stats.draftCount.toString(),
-                )
-            }
-        }
-        item {
-            StatRow(
-                "Valeur d'achat en main" to Money.formatEuros(board?.inHandCostCents ?: stats.stockCostCents),
-                "Marge potentielle" to Money.formatEuros(stats.potentialMarginCents),
-            )
-        }
-        item {
-            StatRow(
-                "Colis à préparer" to stats.toShipCount.toString(),
-                "Délai moyen de vente" to (stats.averageDaysToSell?.let { String.format(Locale.FRANCE, "%.1f j", it) } ?: "—"),
-            )
-        }
-
-        item { SectionTitle("Articles qui stagnent (${stats.stagnant.size})") }
-        if (stats.stagnant.isEmpty()) {
-            item { Text("Aucun article en ligne depuis trop longtemps.", style = MaterialTheme.typography.bodySmall) }
-        } else {
+        if (stats.categories.isNotEmpty()) item { CategoryDonut(stats.categories) }
+        if (board != null) item { StockBar(board, stats.potentialMarginCents, stats.stagnant.size, onOpenStock) }
+        if (stats.stagnant.isNotEmpty()) {
+            item { SectionTitle("Annonces qui stagnent (${stats.stagnant.size})") }
             items(stats.stagnant.take(10), key = { "stagnant-${it.article.id}" }) { s ->
                 ArticleRow(s.article, trailing = {
                     Column {
@@ -234,39 +136,9 @@ fun DashboardScreen(
                         }
                     }
                 }) { onOpenArticle(s.article.id) }
-                s.marketPriceCents?.let {
-                    Text(
-                        "Modèles proches vendus ${Money.formatEuros(it)} (prix médian, ${s.marketSales} ventes).",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
             }
             item {
-                OutlinedButton(onClick = onOpenRepublish, modifier = Modifier.fillMaxWidth()) {
-                    Text("Republier ou baisser les prix")
-                }
-            }
-        }
-
-        item { SectionTitle("Ce qui se vend le mieux") }
-        if (stats.categories.isEmpty()) {
-            item { Text("Les statistiques apparaîtront après tes premières ventes.", style = MaterialTheme.typography.bodySmall) }
-        } else {
-            item {
-                val maxRevenue = stats.categories.maxOf { it.revenueCents }.coerceAtLeast(1)
-                ElevatedCard(Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        stats.categories.take(8).forEach { c ->
-                            BarRow(
-                                title = c.category,
-                                detail = "${c.salesCount} vente(s) • net moyen ${Money.formatEuros(c.averageNetCents)}" +
-                                    (c.averageDaysToSell?.let { " • vendu en ${String.format(Locale.FRANCE, "%.1f", it)} j" } ?: ""),
-                                value = Money.formatEuros(c.revenueCents),
-                                fraction = c.revenueCents.toFloat() / maxRevenue,
-                            )
-                        }
-                    }
-                }
+                OutlinedButton(onClick = onOpenRepublish, modifier = Modifier.fillMaxWidth()) { Text("Republier ou baisser les prix") }
             }
         }
         item {

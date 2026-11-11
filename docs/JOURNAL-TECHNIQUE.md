@@ -372,6 +372,16 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   achat), types de bijoux en barres. Thème Material You : couleurs du fond d'écran (Android 12+) et mode sombre
   automatique. Catégories saisies ramenées au type reconnu (« Tendance Colliers » compte dans « Colliers »).
 
+- **1.5** : accueil sans doublons, chaque graphique porte ses chiffres. Carte du mois : chiffre d'affaires,
+  variation par rapport au mois précédent à la même date (`Charts.monthToDate`), bénéfice, ventes, marge, délai de
+  vente, anneau d'objectif en pourcentage, projection, cumul depuis le début (remplace « Depuis le début » et le texte
+  d'explication). Évolution des ventes : montants sur les barres (toutes en 7 jours et 6 mois, les 3 plus hautes en
+  30 jours), moyenne en pointillés, comparaison avec la période précédente, détail au toucher, bénéfice en plein
+  dans les barres mensuelles. Bijoux les plus rentables : rang, part du bénéfice total, badge « Épuisé : à racheter »
+  (remplace la liste « À racheter »). Types de bijoux en anneau avec pourcentages. Stock en une barre empilée avec
+  effectifs et pourcentages, valeur en main, marge à venir, réassort ; ouvre l'onglet Stock. « Annonces qui
+  stagnent » n'apparaît que s'il y en a. Compilation locale possible (SDK Android installé dans l'environnement).
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

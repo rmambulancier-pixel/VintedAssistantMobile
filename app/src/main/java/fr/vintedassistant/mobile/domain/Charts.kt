@@ -37,7 +37,7 @@ object Charts {
         }
     }
 
-    data class Top(val title: String, val image: String?, val sold: Int, val revenueCents: Long, val netCents: Long, val averageDays: Double?)
+    data class Top(val key: String, val title: String, val image: String?, val sold: Int, val revenueCents: Long, val netCents: Long, val averageDays: Double?)
 
     /**
      * Bijoux classés par bénéfice net total. Les ventes sont regroupées par bijou acheté (toutes annonces
@@ -52,6 +52,7 @@ object Charts {
                 val p = list.firstNotNullOfOrNull { s -> s.articleId?.let { productOf[it] } }
                 val delays = list.filter { it.dateKnown }.mapNotNull { s -> s.listedAt?.let { (s.soldAt - it).coerceAtLeast(0).toDouble() / DAY_MS } }
                 Top(
+                    key = list.firstNotNullOfOrNull { s -> s.articleId?.let { productOf[it]?.key } } ?: ("t:" + StockLedger.normalize(list.first().title)),
                     title = list.maxByOrNull { it.soldAt }!!.title,
                     image = p?.articles?.firstNotNullOfOrNull { it.photos.firstOrNull() } ?: p?.imageFile,
                     sold = list.size,
@@ -62,5 +63,31 @@ object Charts {
             }
             .sortedByDescending { it.netCents }
             .take(max)
+    }
+
+    /** Chiffre d'affaires et ventes d'une période [from, to[ (millisecondes). */
+    data class Period(val revenueCents: Long, val netCents: Long, val sales: Int)
+
+    fun period(sales: List<Sale>, from: Long, to: Long, rateBp: Int = 0): Period {
+        val list = sales.filter { it.counted && it.dateKnown && it.soldAt >= from && it.soldAt < to }
+        return Period(list.sumOf { it.salePriceCents }, list.sumOf { Finance.netCents(it, rateBp) }, list.size)
+    }
+
+    /** Variation en pourcentage, null si la période de référence est vide. */
+    fun change(current: Long, previous: Long): Int? =
+        if (previous <= 0) null else ((current - previous) * 100 / previous).toInt()
+
+    /**
+     * Mois en cours jusqu'à maintenant, comparé au mois précédent sur le même nombre de jours
+     * (du 1er au même quantième), pour une comparaison juste en cours de mois.
+     */
+    fun monthToDate(sales: List<Sale>, now: Long, zone: ZoneId = ZoneId.systemDefault()): Pair<Period, Period> {
+        val today = Instant.ofEpochMilli(now).atZone(zone)
+        val start = today.toLocalDate().withDayOfMonth(1)
+        val prevStart = start.minusMonths(1)
+        fun ms(d: LocalDate) = d.atStartOfDay(zone).toInstant().toEpochMilli()
+        // Même durée écoulée depuis le 1er, sans déborder sur le mois en cours (31 octobre → 30 novembre).
+        val prevTo = minOf(ms(prevStart) + (now - ms(start)), ms(start))
+        return period(sales, ms(start), now + 1) to period(sales, ms(prevStart), prevTo)
     }
 }
