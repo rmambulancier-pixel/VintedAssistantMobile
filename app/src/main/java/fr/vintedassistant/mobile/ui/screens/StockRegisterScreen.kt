@@ -294,6 +294,7 @@ fun StockSheetScreen(
                                             confirm = "La vente du ${Money.formatEuros(sale.salePriceCents)} sera rattachée à cette pièce, qui sortira de « chez moi »." to suspend {
                                                 val a = p.article
                                                 if (a != null) purchases.attachSaleToArticle(sale.id, a.id) else purchases.attachSaleToPurchase(sale.id, p.lot.itemId)
+                                                Unit
                                             }
                                         }) {
                                             Text(p.article?.let { "${p.state.label} n° ${it.id} « ${it.title.take(40)} »" } ?: "Pièce sans annonce (commande ${p.lot.orderRef.takeLast(6)})")
@@ -303,7 +304,7 @@ fun StockSheetScreen(
                             }
                             IssueKind.SALE_NOT_SOLD -> issue.articleId?.let { id ->
                                 TextButton(onClick = {
-                                    confirm = "La fiche n° $id passera « Vendu »." to suspend { context.container().articleRepository.setStatus(id, fr.vintedassistant.mobile.domain.ArticleStatus.SOLD) }
+                                    confirm = "La fiche n° $id passera « Vendu »." to suspend { context.container().articleRepository.setStatus(id, fr.vintedassistant.mobile.domain.ArticleStatus.SOLD); Unit }
                                 }) { Text("Marquer la fiche vendue") }
                             }
                             IssueKind.SOLD_WITHOUT_SALE -> issue.articleId?.let { id -> TextButton(onClick = { onOpenArticle(id) }) { Text("Ouvrir la fiche pour enregistrer la vente") } }
@@ -347,12 +348,12 @@ fun StockSheetScreen(
                                             try { onOpenArticle(purchases.createDraft(p.lot.itemId)) } catch (e: CancellationException) { throw e } catch (e: Exception) { onMessage("Création impossible.") }
                                         }
                                     }) { Text("Créer la fiche") }
-                                    TextButton(onClick = { confirm = "Cette pièce n'est pas chez toi : elle passera « manquante » (hors stock)." to suspend { purchases.pieceAbsent(p.lot.itemId, null) } }) { Text("Absente") }
+                                    TextButton(onClick = { confirm = "Cette pièce n'est pas chez toi : elle passera « manquante » (hors stock)." to suspend { purchases.pieceAbsent(p.lot.itemId, null); Unit } }) { Text("Absente") }
                                 }
                                 State.DRAFT, State.ONLINE, State.RESERVED -> TextButton(onClick = {
                                     confirm = (if (p.state == State.DRAFT) "La pièce n'est pas chez toi : le brouillon n° ${p.article!!.id} passera « Retiré » (rien n'est supprimé)."
                                         else "La pièce n'est pas chez toi : supprime aussi l'annonce dans Vinted. La fiche n° ${p.article!!.id} passera « Retiré ».") to
-                                        suspend { purchases.pieceAbsent(p.lot.itemId, p.article!!.id) }
+                                        suspend { purchases.pieceAbsent(p.lot.itemId, p.article!!.id); Unit }
                                 }) { Text("Absente") }
                                 State.MISSING -> TextButton(onClick = { act("Pièce remise en stock.") { purchases.pieceFound(p.lot.itemId) } }) { Text("Retrouvée") }
                                 State.WITHDRAWN -> p.article?.let { a -> TextButton(onClick = { act("Fiche remise en brouillon.") { purchases.restoreWithdrawn(a.id) } }) { Text("Remettre en stock") } }
