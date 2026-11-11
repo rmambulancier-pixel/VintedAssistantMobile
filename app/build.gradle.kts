@@ -12,8 +12,8 @@ android {
         applicationId = "fr.vintedassistant.mobile"
         minSdk = 26
         targetSdk = 36
-        versionCode = 46
-        versionName = "1.2.1"
+        versionCode = 47
+        versionName = "1.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     // Clé de débogage fixe, versionnée : chaque APK de test a la même signature et
@@ -64,6 +64,8 @@ dependencies {
     implementation("com.google.mlkit:genai-prompt:1.0.0-beta4")
     // Détourage des photos sur le téléphone (gratuit ; modèle fourni par Google Play services).
     implementation("com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1")
+    // Lecture du code produit sur l'étiquette des sachets (texte, sur le téléphone, gratuit).
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

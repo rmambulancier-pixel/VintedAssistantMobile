@@ -298,3 +298,45 @@ class InventoryTest {
         org.junit.Assert.assertEquals(1, Inventory.shortfall(line, 0).unresolved)
     }
 }
+
+class StockRegisterTest {
+    private fun item(id: Long, name: String, qty: Int, sku: String, missing: Int = 0) = PurchaseItem(id, 1, name, null, 0, qty, 70, 0, "", sku, missing)
+
+    @Test
+    fun everyPieceHasOneStateAndTheSheetBalances() {
+        val order = PurchaseOrder(1, "N", "A", 0, 0, 0, 0, listOf(item(1, "Collier tennis (16 pouces (41 cm))", 2, "NH1"), item(2, "Bracelet fleurs (Vert)", 1, "NH2", missing = 1)))
+        val arts = listOf(
+            Article(10, "Collier tennis 40 cm", 70, 900, ArticleStatus.DRAFT, 0, purchaseItemId = 1),
+        )
+        val orphan = Sale(5, null, "Collier tennis strass 40 cm ras de cou", "", 700, 0, 0, 0, null)
+        val sheets = StockRegister.build(StockLedger.build(listOf(order), arts), listOf(orphan))
+        val tennis = sheets.first { it.skus == listOf("NH1") }
+        org.junit.Assert.assertEquals(2, tennis.bought)
+        org.junit.Assert.assertTrue(tennis.balanced)
+        org.junit.Assert.assertEquals(2, tennis.count(StockRegister.Group.IN_HAND)) // 1 brouillon + 1 sans annonce
+        org.junit.Assert.assertTrue(tennis.issues.any { it.kind == StockRegister.IssueKind.ORPHAN_SALE && it.saleId == 5L })
+        val fleurs = sheets.first { it.skus == listOf("NH2") }
+        org.junit.Assert.assertEquals(1, fleurs.count(StockRegister.State.MISSING))
+        org.junit.Assert.assertEquals(0, fleurs.count(StockRegister.Group.IN_HAND))
+    }
+
+    @Test
+    fun extraListingsUnbalanceTheSheet() {
+        val order = PurchaseOrder(1, "N", "A", 0, 0, 0, 0, listOf(item(1, "Bracelet jonc maille (6)", 1, "NH1")))
+        val arts = listOf(
+            Article(1, "Jonc", 105, 600, ArticleStatus.ONLINE, 0, purchaseItemId = 1),
+            Article(2, "Jonc", 105, 600, ArticleStatus.DRAFT, 0, purchaseItemId = 1),
+        )
+        val s = StockRegister.build(StockLedger.build(listOf(order), arts), emptyList()).single()
+        org.junit.Assert.assertFalse(s.balanced)
+        org.junit.Assert.assertEquals(1, s.pieces.count { it.extra })
+        org.junit.Assert.assertTrue(s.issues.any { it.kind == StockRegister.IssueKind.EXTRA_LISTING })
+    }
+
+    @Test
+    fun summaryLinesAreSuspicious() {
+        org.junit.Assert.assertTrue(SupplierLines.suspicious("Items Total:7"))
+        org.junit.Assert.assertTrue(SupplierLines.suspicious("Sous-total d'origine € 25.92"))
+        org.junit.Assert.assertFalse(SupplierLines.suspicious("Collier chaîne de tennis argent en métal avec incrustation en zircon"))
+    }
+}

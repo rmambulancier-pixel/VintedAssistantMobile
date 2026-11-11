@@ -355,6 +355,17 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   produit dans « Rattacher à un achat » ; accueil : bouton vers Ventes sur « Ventes sans fiche ». CI : artefacts
   gardés 2 jours (quota de stockage GitHub atteint), anciens artefacts supprimés.
 
+- **1.3** : registre du stock pièce par pièce (`domain/StockRegister`). Chaque pièce achetée a un seul état
+  (sans annonce, brouillon, en vente, réservée, vendue colis à préparer, en réassort, en route, livrée, manquante,
+  retirée) ; bilan par bijou et global : achetées = chez moi + réassort + parties + manquantes + retirées, avec
+  l'écart affiché s'il y a des fiches de trop. Contrôles : fiches de trop sur un achat, fiche vendue sans vente,
+  vente sur une fiche non vendue, vente sans fiche ressemblant au bijou, ligne d'achat douteuse. Fiche stock d'un
+  bijou : historique de chaque pièce et corrections sur place (rattacher une vente à un brouillon ou à une pièce
+  sans annonce, pièce absente, retrouvée, remise en stock). Scan de l'étiquette du sachet (ML Kit texte, code
+  « NH… ») pour ouvrir la fiche stock. Lignes d'achat fantômes « Items Total:N » (liste des commandes lue comme une
+  commande) écartées à l'import et retirées au démarrage. Dates d'arrivée du réassort en français. CI : envoi des
+  artefacts non bloquant.
+
 ## Étapes suivantes
 
 - Ajuster le remplissage bêta et le classement des notifications avec le diagnostic et des

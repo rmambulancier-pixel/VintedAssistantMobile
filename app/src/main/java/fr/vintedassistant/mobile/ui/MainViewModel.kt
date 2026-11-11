@@ -112,6 +112,15 @@ class MainViewModel(
                 Outcome.Failed("La reprise des données de l'ancienne version a échoué. Elles sont conservées.")
             }
             describe(outcome)?.let { _message.value = it }
+            // Lignes d'achat fantômes (récapitulatif de page lu comme un bijou) : retirées.
+            try {
+                val n = purchases.removeSuspiciousLines()
+                if (n > 0) _message.value = "$n ligne(s) d'achat fantôme(s) retirée(s) du stock (récapitulatif de page lu comme un bijou)."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Non bloquant.
+            }
             // Remise en ordre des imports des versions précédentes (sans effet si déjà fait).
             try {
                 val r = repository.cleanUpImportedData()

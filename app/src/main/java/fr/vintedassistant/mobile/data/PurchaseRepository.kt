@@ -249,6 +249,69 @@ class PurchaseRepository(
         }
     }
 
+    /**
+     * Retire les lignes d'achat qui ne sont pas des bijoux (récapitulatif de page lu comme un produit), sans
+     * fiche rattachée et sans code produit. Une commande qui n'a plus aucune ligne est supprimée. Renvoie le
+     * nombre de lignes retirées.
+     */
+    suspend fun removeSuspiciousLines(): Int = db.withTransaction {
+        var removed = 0
+        val orders = dao.observeOrders().first()
+        for (o in orders) {
+            val items = dao.itemsOf(o.id)
+            val bad = items.filter { it.sku.isBlank() && fr.vintedassistant.mobile.domain.SupplierLines.suspicious(it.name) && articleDao.linkedToPurchase(it.id).isEmpty() }
+            if (bad.isEmpty()) continue
+            if (bad.size == items.size) {
+                dao.deleteOrder(o.id)
+            } else {
+                bad.forEach { dao.deleteItem(it.id) }
+                val rest = dao.itemsOf(o.id).sortedBy { it.id }
+                val landed = allocateDelivered(rest.map { Triple(it.unitPriceCents, it.quantity, it.missing) }, o.shippingCents + o.feesCents)
+                rest.forEachIndexed { i, it -> if (it.landedUnitCents != landed[i]) dao.updateItem(it.copy(landedUnitCents = landed[i])) }
+            }
+            removed += bad.size
+        }
+        removed
+    }
+
+    /**
+     * Vente sans fiche dont la pièce a déjà une fiche en stock (brouillon ou en vente) : la fiche devient « Vendu »
+     * et porte la vente, avec son coût d'achat. La pièce sort de « chez moi ».
+     */
+    suspend fun attachSaleToArticle(saleId: Long, articleId: Long) = db.withTransaction {
+        val sale = saleDao.getById(saleId) ?: throw IllegalStateException("Vente introuvable")
+        check(sale.articleId == null) { "Cette vente a déjà une fiche" }
+        val article = articleDao.getById(articleId) ?: throw IllegalStateException("Fiche introuvable")
+        check(ArticleStatus.fromLabel(article.status).inStock) { "Cette fiche n'est plus en stock" }
+        val now = clock()
+        articleDao.update(article.copy(status = ArticleStatus.SOLD.label, updatedAt = now))
+        saleDao.update(sale.copy(articleId = articleId, costCents = article.costCents, category = sale.category.ifBlank { article.category }))
+    }
+
+    /** Pièce constatée absente : sans fiche, elle passe manquante ; avec une fiche en stock, la fiche passe « Retiré ». */
+    suspend fun pieceAbsent(itemId: Long, articleId: Long?) {
+        if (articleId == null) {
+            val item = dao.getItem(itemId) ?: return
+            setMissing(itemId, item.missing + 1)
+        } else {
+            val a = articleDao.getById(articleId) ?: return
+            check(ArticleStatus.fromLabel(a.status).inStock) { "Fiche plus en stock" }
+            articleDao.update(a.copy(status = ArticleStatus.WITHDRAWN.label, updatedAt = clock()))
+        }
+    }
+
+    /** Pièce manquante retrouvée : elle revient en main, sans annonce. */
+    suspend fun pieceFound(itemId: Long) {
+        val item = dao.getItem(itemId) ?: return
+        if (item.missing > 0) setMissing(itemId, item.missing - 1)
+    }
+
+    /** Fiche retirée remise en stock, en brouillon. */
+    suspend fun restoreWithdrawn(articleId: Long) {
+        val a = articleDao.getById(articleId) ?: return
+        if (a.status == ArticleStatus.WITHDRAWN.label) articleDao.update(a.copy(status = ArticleStatus.DRAFT.label, updatedAt = clock()))
+    }
+
     /** Détache l'article ; son coût d'achat est conservé (modifiable à la main). */
     suspend fun unlink(articleId: Long) {
         val article = articleDao.getById(articleId) ?: return

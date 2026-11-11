@@ -178,6 +178,9 @@ interface PurchaseDao {
     @Query("UPDATE purchase_orders SET received = :received WHERE id = :id")
     suspend fun setReceived(id: Long, received: Boolean): Int
 
+    @Query("DELETE FROM purchase_items WHERE id = :id")
+    suspend fun deleteItem(id: Long): Int
+
     @Query("DELETE FROM purchase_orders WHERE id = :id")
     suspend fun deleteOrder(id: Long): Int
 }

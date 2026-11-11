@@ -53,6 +53,8 @@ object SupplierOrderParser {
             val qty = it.optString("qty").trim().toIntOrNull()?.coerceIn(1, 10_000) ?: 1
             // Prix 0 accepté : produit offert (« Essai gratuit »), son coût sera sa part du port.
             if (name.length < 3 || price < 0) continue
+            // Récapitulatif de page (« Items Total:7 ») lu comme un produit : écarté.
+            if (fr.vintedassistant.mobile.domain.SupplierLines.suspicious(name) && it.optString("sku").isBlank()) continue
             val image = it.optString("image").trim()
             if (!seen.add("$name|$price|$image|" + it.optString("sku"))) continue
             val sku = it.optString("sku").trim().uppercase().takeIf { s -> s.matches(Regex("[A-Z0-9]{4,40}")) }.orEmpty()

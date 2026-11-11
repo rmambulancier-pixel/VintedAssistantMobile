@@ -88,6 +88,10 @@ class StockActions(
     val expressAll: () -> Unit = {},
     /** Inventaire : compter ce qu'on a en main et corriger les écarts. */
     val inventory: () -> Unit = {},
+    /** Registre du stock : tous les bijoux, bilan et points à corriger. */
+    val register: () -> Unit = {},
+    /** Fiche stock d'un bijou (clé du produit). */
+    val openSheet: (String) -> Unit = {},
 )
 
 @Composable
@@ -164,7 +168,23 @@ fun StockScreen(
         }
         item { StockSummary(stock, articles, sales) }
         item {
-            OutlinedButton(onClick = actions.inventory, modifier = Modifier.fillMaxWidth()) { Text("Faire l'inventaire (compter mes bijoux)") }
+            val sheets = remember(stock, sales) { fr.vintedassistant.mobile.domain.StockRegister.build(stock, sales) }
+            val toFix = sheets.count { it.issues.isNotEmpty() || !it.balanced }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (toFix > 0) {
+                    androidx.compose.material3.Card(
+                        onClick = actions.register,
+                        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Contrôle du stock : $toFix bijou(x) à corriger. Touche pour voir et corriger.", Modifier.padding(12.dp))
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = actions.register, modifier = Modifier.weight(1f)) { Text("Registre et contrôle") }
+                    OutlinedButton(onClick = actions.inventory, modifier = Modifier.weight(1f)) { Text("Inventaire") }
+                }
+            }
         }
         item {
             OutlinedTextField(
@@ -227,6 +247,7 @@ fun StockScreen(
                     onCopyFrom = { copyFor = product },
                     onOpen = actions.openArticle,
                     onReceived = actions.markReceived,
+                    onSheet = { actions.openSheet(product.key) },
                 )
             }
         } else {
@@ -267,6 +288,7 @@ fun StockScreen(
                             if (product == null) blindRelaunch = article else if (lot != null) actions.relaunch(article.id, lot.itemId)
                         },
                         onLink = { linkArticle = article },
+                        onSheet = product?.let { pr -> { actions.openSheet(pr.key) } },
                     )
                 })
             }
@@ -389,6 +411,7 @@ private fun ProductCard(
     onCopyFrom: () -> Unit,
     onOpen: (Long) -> Unit,
     onReceived: (Long) -> Unit,
+    onSheet: () -> Unit = {},
 ) {
     val template = product.template
     ElevatedCard(Modifier.fillMaxWidth()) {
@@ -398,6 +421,7 @@ private fun ProductCard(
                 Column(Modifier.weight(1f)) {
                     Text(template?.title ?: product.name, style = MaterialTheme.typography.titleSmall, maxLines = 2)
                     if (template != null) Text("Fournisseur : ${product.name}", style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                    TextButton(onClick = onSheet) { Text("Fiche stock") }
                     if (product.notListed > 0) Text(
                         "${product.notListed} pièce(s) reçue(s), pas encore en vente",
                         style = MaterialTheme.typography.bodyMedium,
@@ -429,7 +453,7 @@ private fun ProductCard(
                 } else {
                     Text(
                         "Commande du $date : ${lot.quantity} en réassort" +
-                            (if (lot.deliveryEta.isNotBlank()) " (prévue ${lot.deliveryEta})" else "") +
+                            (fr.vintedassistant.mobile.domain.StockBoard.etaDate(lot.deliveryEta, java.time.LocalDate.now())?.let { " (arrivée prévue le " + it.format(java.time.format.DateTimeFormatter.ofPattern("d MMMM", java.util.Locale.FRANCE)) + ")" } ?: if (lot.deliveryEta.isNotBlank()) " (prévue ${lot.deliveryEta})" else "") +
                             ", revient ${Money.formatEuros(lot.landedUnitCents)} pièce",
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -494,7 +518,9 @@ private fun ColumnScope.StockFooter(
     dateFormat: DateFormat,
     onRelaunch: () -> Unit,
     onLink: () -> Unit,
+    onSheet: (() -> Unit)? = null,
 ) {
+    onSheet?.let { TextButton(onClick = it) { Text("Fiche stock de ce bijou") } }
     if (product == null) {
         Text("Aucun achat rattaché", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
         Row {

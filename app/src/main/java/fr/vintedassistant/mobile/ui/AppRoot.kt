@@ -74,6 +74,7 @@ enum class Tab(val label: String, val icon: ImageVector) {
 private enum class Overlay(val title: String) {
     NONE(""), SETTINGS("Réglages"), ACTIVITY("Activité Vinted"), VINTED("Vinted intégré (bêta)"),
     PURCHASES("Achats fournisseur"), SUPPLIER("Nihaojewelry"), EXPRESS("Mise en vente express"), INVENTORY("Inventaire"),
+    REGISTER("Registre du stock"), SHEET("Fiche stock"),
 }
 
 /**
@@ -94,6 +95,9 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
     // Republication en série : fiches à republier l'une après l'autre dans Vinted intégré.
     var vintedQueue by rememberSaveable { mutableStateOf<ArrayList<Long>>(ArrayList()) }
     // Mise en vente express : fiches préparées à compléter (photos, prix) avant publication.
+    // Fiche stock ouverte (clé du bijou) et écran d'où elle a été ouverte.
+    var sheetKey by rememberSaveable { mutableStateOf("") }
+    var sheetFromRegister by rememberSaveable { mutableStateOf(false) }
     var expressIds by rememberSaveable { mutableStateOf<ArrayList<Long>>(ArrayList()) }
 
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -183,10 +187,14 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
 
     val overlay = Overlay.entries[overlayIndex]
     fun close() {
-        overlayIndex = if (overlay == Overlay.SUPPLIER) Overlay.PURCHASES.ordinal else Overlay.NONE.ordinal
+        overlayIndex = when {
+            overlay == Overlay.SUPPLIER -> Overlay.PURCHASES.ordinal
+            overlay == Overlay.SHEET && sheetFromRegister -> Overlay.REGISTER.ordinal
+            else -> Overlay.NONE.ordinal
+        }
     }
     BackHandler(enabled = overlay != Overlay.NONE && overlay != Overlay.VINTED && overlay != Overlay.SUPPLIER) {
-        overlayIndex = if (overlay == Overlay.SUPPLIER) Overlay.PURCHASES.ordinal else Overlay.NONE.ordinal
+        close()
     }
     val tab = Tab.entries[tabIndex]
     val unread = notices.count { !it.handled }
@@ -274,6 +282,20 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                 onOpenArticle = { close(); openEditor(it) },
                 onMessage = vm::show,
             )
+            Overlay.REGISTER -> fr.vintedassistant.mobile.ui.screens.StockRegisterScreen(
+                stock = stock,
+                sales = sales.orEmpty(),
+                modifier = modifier,
+                onOpenSheet = { sheetKey = it; sheetFromRegister = true; overlayIndex = Overlay.SHEET.ordinal },
+            )
+            Overlay.SHEET -> fr.vintedassistant.mobile.ui.screens.StockSheetScreen(
+                key = sheetKey,
+                stock = stock,
+                sales = sales.orEmpty(),
+                modifier = modifier,
+                onOpenArticle = { openEditor(it) },
+                onMessage = vm::show,
+            )
             Overlay.INVENTORY -> fr.vintedassistant.mobile.ui.screens.InventoryScreen(
                 stock = stock,
                 sales = sales.orEmpty(),
@@ -334,6 +356,8 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                         link = { a, lot -> vm.linkToPurchase(a.id, lot.itemId, a.title, lot.landedUnitCents) },
                         markReceived = { orderId -> vm.setOrderReceived(orderId, true) },
                         inventory = { overlayIndex = Overlay.INVENTORY.ordinal },
+                        register = { overlayIndex = Overlay.REGISTER.ordinal },
+                        openSheet = { key -> sheetKey = key; sheetFromRegister = false; overlayIndex = Overlay.SHEET.ordinal },
                         expressAll = { vm.startExpress { ids -> expressIds = ArrayList(ids); overlayIndex = Overlay.EXPRESS.ordinal } },
                     ),
                 )

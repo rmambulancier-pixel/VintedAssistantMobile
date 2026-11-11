@@ -689,4 +689,34 @@ class RepositoryTest {
         assertEquals(800L, fresh.priceCents)
         assertEquals("Colliers", fresh.category)
     }
+
+    @Test
+    fun registerCorrections() = runBlocking {
+        val purchases = PurchaseRepository(db, photoStore = null, clock = { now })
+        val order = ParsedOrder("NH-R", null, listOf(ParsedOrderLine("Collier tennis (16 pouces (41 cm))", 100, 2, "", "", sku = "NH1")),
+            shippingCents = 0, feesCents = 0, totalCents = null, url = "")
+        purchases.saveOrder("Nihaojewelry", order, downloadImages = false, received = true)
+        val item = purchases.orders.first().single().items.single()
+        val draftId = purchases.createDraft(item.id, supplierPhoto = false)
+        val saleId = db.saleDao().insert(
+            fr.vintedassistant.mobile.data.local.SaleEntity(
+                articleId = null, title = "Collier tennis 40 cm", category = "", salePriceCents = 700, costCents = 0, feesCents = 0,
+                soldAt = now, listedAt = null, buyer = "", shippingStatus = "Livrée", shippedAt = null, labelFile = null, notes = "",
+            ),
+        )
+        // La vente sans fiche est rattachée au brouillon : il devient « Vendu » et la vente prend son coût.
+        purchases.attachSaleToArticle(saleId, draftId)
+        assertEquals(ArticleStatus.SOLD, repo.getArticle(draftId)!!.status)
+        assertEquals(item.landedUnitCents, repo.sales.first().single().costCents)
+        // La seconde pièce, sans fiche, est absente : elle passe manquante, puis retrouvée.
+        purchases.pieceAbsent(item.id, null)
+        assertEquals(1, purchases.orders.first().single().items.single().missing)
+        purchases.pieceFound(item.id)
+        assertEquals(0, purchases.orders.first().single().items.single().missing)
+        // Ligne fantôme « Items Total:7 » retirée, commande vide supprimée.
+        purchases.saveOrder("Nihaojewelry", ParsedOrder("NH-F", null, listOf(ParsedOrderLine("Items Total:7", 1450, 1, "", "")),
+            shippingCents = 0, feesCents = 0, totalCents = null, url = ""), downloadImages = false, received = true)
+        assertEquals(1, purchases.removeSuspiciousLines())
+        assertEquals(listOf("NH-R"), purchases.orders.first().map { it.orderRef })
+    }
 }
