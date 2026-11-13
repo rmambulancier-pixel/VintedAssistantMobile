@@ -138,11 +138,15 @@ object VintedPageScripts {
           function setVal(e,v){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,v);
             e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}
           const vis=e=>{if(!e||!e.isConnected)return false;const r=e.getBoundingClientRect();return r.width>1&&r.height>1;};
-          const modals=()=>Array.from(document.querySelectorAll('.ReactModal__Content')).filter(vis);
+          // La boîte de Vinted peut mesurer 0 de haut (son contenu est positionné à part) : elle compte comme
+          // affichée dès qu'un de ses éléments l'est.
+          const shown=m=>!!m&&m.isConnected&&(vis(m)||Array.from(m.querySelectorAll('*')).slice(0,60).some(vis));
+          const modals=()=>Array.from(document.querySelectorAll('.ReactModal__Content')).filter(shown);
+          const sig=m=>(m.innerText||m.textContent||'').replace(/\s+/g,' ').slice(0,300);
           // Le menu du champ en cours. Vinted peut laisser un ancien menu dans la page (13 novembre : la liste des
           // couleurs a été lue à la place de celle des états) : on ne travaille que dans le menu ouvert par ce champ.
           let cur=null;
-          const dialog=()=>{if(cur&&vis(cur))return cur;const all=modals();return all.length?all[all.length-1]:null;};
+          const dialog=()=>{if(cur&&shown(cur))return cur;const all=modals();return all.length?all[all.length-1]:null;};
           const saveBtn=()=>{const d=dialog()||document;return d.querySelector('[data-testid="input-dropdown-save-button"]')||
             Array.from(d.querySelectorAll('button')).find(b=>/^(fait|valider|ok|enregistrer|termine|terminer)$/i.test(norm(b.innerText)));};
           const canSave=b=>b&&!b.disabled&&!/disabled/.test(b.className);
@@ -191,13 +195,15 @@ object VintedPageScripts {
               out.replaced=inp.value;
             }
             await closeLeftovers();
-            const before=new Set(modals());
+            const before=new Map(modals().map(m=>[m,sig(m)]));
             inp.focus();inp.click();
-            for(let i=0;i<25&&!cur;i++){await sleep(150);cur=modals().find(m=>!before.has(m))||null;}
+            // Le menu du champ : une boîte nouvelle, ou une boîte réutilisée dont le contenu vient de changer.
+            for(let i=0;i<25&&!cur;i++){await sleep(150);cur=modals().reverse().find(m=>!before.has(m)||before.get(m)!==sig(m))||null;}
             if(!cur){
-              // Aucun nouveau menu : on n'accepte un menu déjà présent que s'il contient les choix attendus.
-              const old=modals().reverse().find(m=>f.expect&&fits(f,optionsOf(m)));
-              if(old)cur=old;else{out.status=modals().length?'mauvais menu ouvert':'menu non ouvert';out.seen=options().slice(0,8).map(x=>x.t);cur=null;return;}
+              // Rien de nouveau : on prend la dernière boîte ; ses choix sont contrôlés juste après.
+              const all=modals();
+              if(all.length)cur=all[all.length-1];
+              else{out.status='menu non ouvert';out.boxes=document.querySelectorAll('.ReactModal__Content').length;return;}
             }
             // La liste se charge après l'ouverture : on attend des options (5 s au plus).
             const waitOptions=async(ms,pred)=>{for(let t=0;t<ms;t+=200){const o=options();if(o.length&&(!pred||pred(o)))return o;await sleep(200);}return options();};
@@ -221,7 +227,7 @@ object VintedPageScripts {
             const b=saveBtn();
             out.save=b?(canSave(b)?'cliqué':'grisé'):'aucun bouton';
             if(out.picked.length&&canSave(b)){b.click();await sleep(700);}
-            if(cur&&vis(cur)&&options().length){const c=closeBtn();if(c){c.click();await sleep(400);}}
+            if(cur&&shown(cur)&&options().length){const c=closeBtn();if(c){c.click();await sleep(400);}}
             await sleep(300);await dismissInfo();
             if(!out.seen.length){const dd=dialog();out.dialogText=dd?(dd.innerText||'').replace(/\s+/g,' ').slice(0,200):'(boîte fermée)';}
             const value=(inp.value||'').trim();

@@ -396,3 +396,8 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   n'a pas les choix attendus n'est jamais cliqué (« mauvais menu ouvert ») ; État et Couleur sont relus après
   coup, un second essai est fait, et une valeur différente de la fiche est signalée (« différent ») ; couleurs
   en mots entiers, la couleur de la fiche décide. Testé sur une page de simulation (Chromium), pas sur Vinted.
+- **1.5.3** (13 novembre) : la 1.5.2 ne trouvait plus aucun menu (« menu non ouvert » partout). Cause : la boîte
+  `.ReactModal__Content` de Vinted mesure 0 de haut, et le nouveau filtre « affichée » l'écartait. Une boîte
+  compte désormais comme affichée dès qu'un de ses éléments l'est ; une boîte réutilisée dont le contenu change
+  est acceptée ; à défaut, la dernière boîte est prise et ses choix contrôlés. Simulation refaite avec une
+  boîte de hauteur nulle.
