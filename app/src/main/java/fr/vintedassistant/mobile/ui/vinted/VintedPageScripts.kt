@@ -137,9 +137,14 @@ object VintedPageScripts {
           const norm=s=>(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
           function setVal(e,v){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,v);
             e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}
-          const dialog=()=>{const all=document.querySelectorAll('.ReactModal__Content');return all.length?all[all.length-1]:null;};
-          const saveBtn=()=>document.querySelector('[data-testid="input-dropdown-save-button"]')||
-            Array.from((dialog()||document).querySelectorAll('button')).find(b=>/^(fait|valider|ok)$/i.test((b.innerText||'').trim()));
+          const vis=e=>{if(!e||!e.isConnected)return false;const r=e.getBoundingClientRect();return r.width>1&&r.height>1;};
+          const modals=()=>Array.from(document.querySelectorAll('.ReactModal__Content')).filter(vis);
+          // Le menu du champ en cours. Vinted peut laisser un ancien menu dans la page (13 novembre : la liste des
+          // couleurs a été lue à la place de celle des états) : on ne travaille que dans le menu ouvert par ce champ.
+          let cur=null;
+          const dialog=()=>{if(cur&&vis(cur))return cur;const all=modals();return all.length?all[all.length-1]:null;};
+          const saveBtn=()=>{const d=dialog()||document;return d.querySelector('[data-testid="input-dropdown-save-button"]')||
+            Array.from(d.querySelectorAll('button')).find(b=>/^(fait|valider|ok|enregistrer|termine|terminer)$/i.test(norm(b.innerText)));};
           const canSave=b=>b&&!b.disabled&&!/disabled/.test(b.className);
           const closeBtn=()=>{const d=dialog();return d&&d.querySelector('.web_ui__Navigation__right button, [data-testid$="close-button"]');};
           function fieldInput(re){
@@ -147,13 +152,16 @@ object VintedPageScripts {
             const box=lab&&lab.parentElement&&lab.parentElement.closest('[class*="input-dropdown"]');
             return box&&box.querySelector('input');
           }
-          const options=()=>{const d=dialog();if(!d)return [];
+          const optionsOf=d=>{if(!d)return [];
             return Array.from(d.querySelectorAll('.web_ui__Cell__clickable, [role="option"], [role="radio"], [role="checkbox"], label'))
-              .filter(e=>!e.querySelector('.web_ui__Cell__clickable'))
+              .filter(e=>vis(e)&&!e.querySelector('.web_ui__Cell__clickable'))
               .map(e=>({e,t:norm(e.innerText||e.textContent)})).filter(x=>x.t&&x.t.length<160);};
+          const options=()=>optionsOf(dialog());
+          const fits=(f,list)=>!f.expect||list.some(x=>new RegExp(f.expect).test(x.t));
           // Fenêtre d'information de Vinted (ex. après « Neuf sans étiquette » : « L'article ne doit jamais avoir
           // été utilisé… ») : sans options à cocher, elle bloque les menus suivants. On la referme.
           async function dismissInfo(){
+            cur=null;
             for(let k=0;k<3;k++){
               const d=dialog();if(!d||options().length)return;
               const btns=Array.from(d.querySelectorAll('button')).filter(b=>!b.disabled);
@@ -163,38 +171,77 @@ object VintedPageScripts {
               b.click();await sleep(600);
             }
           }
+          // Referme les menus restés ouverts avant d'en ouvrir un autre.
+          async function closeLeftovers(){
+            cur=null;
+            for(let k=0;k<3;k++){
+              const d=dialog();if(!d)return;
+              const c=closeBtn();if(!c)return;
+              c.click();await sleep(500);
+            }
+          }
+          const wanted=(f,value)=>{const v=norm(value);if(!v)return false;if(!f.verify)return true;
+            return f.values.some(w=>{const n=norm(w);return v===n||v.includes(n);});};
+          async function fill(f,out){
+            const inp=fieldInput(new RegExp(f.label));
+            if(!inp){out.status='absent';return;}
+            if(!f.values.length){out.status=(inp.value||'').trim()?'déjà rempli':'à choisir';return;}
+            if((inp.value||'').trim()){
+              if(wanted(f,inp.value)){out.status='déjà rempli';out.picked=[inp.value];return;}
+              out.replaced=inp.value;
+            }
+            await closeLeftovers();
+            const before=new Set(modals());
+            inp.focus();inp.click();
+            for(let i=0;i<25&&!cur;i++){await sleep(150);cur=modals().find(m=>!before.has(m))||null;}
+            if(!cur){
+              // Aucun nouveau menu : on n'accepte un menu déjà présent que s'il contient les choix attendus.
+              const old=modals().reverse().find(m=>f.expect&&fits(f,optionsOf(m)));
+              if(old)cur=old;else{out.status=modals().length?'mauvais menu ouvert':'menu non ouvert';out.seen=options().slice(0,8).map(x=>x.t);cur=null;return;}
+            }
+            // La liste se charge après l'ouverture : on attend des options (5 s au plus).
+            const waitOptions=async(ms,pred)=>{for(let t=0;t<ms;t+=200){const o=options();if(o.length&&(!pred||pred(o)))return o;await sleep(200);}return options();};
+            const first=await waitOptions(5000,o=>fits(f,o));
+            if(!fits(f,first)){
+              out.status='mauvais menu ouvert';out.seen=first.slice(0,8).map(x=>x.t);
+              const c=closeBtn();if(c){c.click();await sleep(400);}
+              return;
+            }
+            const search=dialog()&&dialog().querySelector('input[type="text"],input[type="search"],input:not([type])');
+            for(const v of f.values){
+              if(out.picked.length>=f.max)break;
+              const nv=norm(v);
+              if(search&&f.search){search.focus();setVal(search,v);await sleep(400);await waitOptions(4000,o=>o.some(x=>x.t===nv||x.t.startsWith(nv)));}
+              const list=options();
+              out.seen=list.slice(0,40).map(x=>x.t.slice(0,30));
+              // Marque : nom exact uniquement (jamais une marque voisine), sinon « Sans marque ».
+              const hit=list.find(x=>x.t===nv)||(f.exact?null:(list.find(x=>x.t.startsWith(nv+' ')||x.t.startsWith(nv))||(f.loose?list.find(x=>x.t.includes(nv)):null)));
+              if(hit&&!out.picked.includes(hit.t)){hit.e.click();out.picked.push(hit.t);await sleep(500);}
+            }
+            const b=saveBtn();
+            out.save=b?(canSave(b)?'cliqué':'grisé'):'aucun bouton';
+            if(out.picked.length&&canSave(b)){b.click();await sleep(700);}
+            if(cur&&vis(cur)&&options().length){const c=closeBtn();if(c){c.click();await sleep(400);}}
+            await sleep(300);await dismissInfo();
+            if(!out.seen.length){const dd=dialog();out.dialogText=dd?(dd.innerText||'').replace(/\s+/g,' ').slice(0,200):'(boîte fermée)';}
+            const value=(inp.value||'').trim();
+            if(value&&wanted(f,value)){out.status='rempli';out.picked=[value];}
+            else if(value){out.status='différent';out.shown=value;}
+            else out.status=out.picked.length?'choisi, à vérifier':'non trouvé';
+          }
           (async()=>{
             try{
               for(const f of fields){
                 await dismissInfo();
-                const out={field:f.name,status:'',picked:[],seen:[]};R.fields.push(out);
-                const inp=fieldInput(new RegExp(f.label));
-                if(!inp){out.status='absent';continue;}
-                if((inp.value||'').trim()){out.status='déjà rempli';out.picked=[inp.value];continue;}
-                inp.focus();inp.click();
-                for(let i=0;i<20&&!dialog();i++)await sleep(150);
-                if(!dialog()){out.status='menu non ouvert';continue;}
-                // La liste se charge après l'ouverture : on attend des options (5 s au plus).
-                const waitOptions=async(ms,pred)=>{for(let t=0;t<ms;t+=200){const o=options();if(o.length&&(!pred||pred(o)))return o;await sleep(200);}return options();};
-                await waitOptions(5000);
-                const search=dialog()&&dialog().querySelector('input');
-                for(const v of f.values){
-                  if(out.picked.length>=f.max)break;
-                  const nv=norm(v);
-                  if(search&&f.search){search.focus();setVal(search,v);await sleep(400);await waitOptions(4000,o=>o.some(x=>x.t===nv||x.t.startsWith(nv)));}
-                  const list=options();
-                  out.seen=list.slice(0,25).map(x=>x.t);
-                  // Marque : nom exact uniquement (jamais une marque voisine), sinon « Sans marque ».
-                  const hit=list.find(x=>x.t===nv)||(f.exact?null:(list.find(x=>x.t.startsWith(nv+' ')||x.t.startsWith(nv))||(f.loose?list.find(x=>x.t.includes(nv)):null)));
-                  if(hit&&!out.picked.includes(hit.t)){hit.e.click();out.picked.push(hit.t);await sleep(500);}
+                let out={field:f.name,status:'',picked:[],seen:[]};
+                await fill(f,out);
+                // Un second essai quand le champ n'a pas pris la bonne valeur.
+                if(!['rempli','déjà rempli','absent','à choisir'].includes(out.status)){
+                  const again={field:f.name,status:'',picked:[],seen:[],retry:out.status};
+                  await sleep(500);await dismissInfo();await fill(f,again);
+                  if(['rempli','déjà rempli'].includes(again.status)||!out.seen.length)out=again;else out.retry=again.status;
                 }
-                const b=saveBtn();
-                if(out.picked.length&&canSave(b)){b.click();await sleep(600);}
-                if(dialog()&&options().length){const c=closeBtn();if(c){c.click();await sleep(400);}}
-                await sleep(300);await dismissInfo();
-                if(!out.seen.length){const dd=dialog();out.dialogText=dd?(dd.innerText||'').replace(/\s+/g,' ').slice(0,200):'(boîte fermée)';}
-                out.status=(inp.value||'').trim()?'rempli':(out.picked.length?'choisi, à vérifier':'non trouvé');
-                if((inp.value||'').trim())out.picked=[inp.value];
+                cur=null;R.fields.push(out);
               }
             }catch(e){R.error=String(e);}finally{R.done=true;}
           })();

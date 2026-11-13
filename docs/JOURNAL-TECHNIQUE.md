@@ -388,3 +388,11 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   exemples réels transmis par l'utilisateur.
 - Chiffrement optionnel des sauvegardes (mot de passe), si elles sont envoyées hors du téléphone.
 - Mise à jour des versions (AGP, Kotlin, Compose) dans un commit séparé, une fois l'usage validé.
+
+- **1.5.2** (13 novembre) : Vinted intégré, détails. Relevé du jour : la liste des couleurs lue à la place de
+  celle des états, État resté sur « Très bon état » au lieu de « Neuf sans étiquette », Couleur vide, « Vert »
+  déduit de « Ouvert ». Corrections : le script ne travaille que dans le menu ouvert par le champ en cours
+  (nouvelle boîte apparue après le clic, sinon boîte dont les choix correspondent au champ) ; un menu qui
+  n'a pas les choix attendus n'est jamais cliqué (« mauvais menu ouvert ») ; État et Couleur sont relus après
+  coup, un second essai est fait, et une valeur différente de la fiche est signalée (« différent ») ; couleurs
+  en mots entiers, la couleur de la fiche décide. Testé sur une page de simulation (Chromium), pas sur Vinted.
