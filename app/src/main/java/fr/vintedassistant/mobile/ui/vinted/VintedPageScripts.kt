@@ -164,16 +164,33 @@ object VintedPageScripts {
           const fits=(f,list)=>!f.expect||list.some(x=>new RegExp(f.expect).test(x.t));
           // Fenêtre d'information de Vinted (ex. après « Neuf sans étiquette » : « L'article ne doit jamais avoir
           // été utilisé… ») : sans options à cocher, elle bloque les menus suivants. On la referme.
+          // Vinted y propose parfois de changer la valeur (13 novembre : « Passer à « Très bon état » ») : ce bouton
+          // n'est jamais touché. On garde le choix de la fiche : bouton qui le confirme, sinon la croix, sinon Échap.
+          let keep=[];
           async function dismissInfo(){
             cur=null;
             for(let k=0;k<3;k++){
-              const d=dialog();if(!d||options().length)return;
-              const btns=Array.from(d.querySelectorAll('button')).filter(b=>!b.disabled);
-              const b=btns.find(x=>/compris|d.accord|^ok$|continuer|confirmer|fermer|valider/i.test((x.innerText||x.getAttribute('aria-label')||'').trim()))||closeBtn()||btns[btns.length-1];
-              if(!b)return;
+              // Une fenêtre sans choix à cocher, même si un autre menu traîne dans la page.
+              const d=modals().reverse().find(m=>!optionsOf(m).length);if(!d){cur=null;return;}
+              cur=d;
+              const txt=x=>norm(x.innerText||x.getAttribute('aria-label')||'');
+              const all=Array.from(d.querySelectorAll('button,[role="button"],a')).filter(b=>!b.disabled&&vis(b));
+              R.infoButtons=all.map(x=>(x.innerText||x.getAttribute('aria-label')||'').trim().slice(0,50));
+              const changes=x=>/passer a|changer|modifier|remplacer|choisir un autre/.test(txt(x))||
+                (/etat/.test(txt(x))&&keep.length&&!keep.some(v=>txt(x).includes(v)));
+              const safe=all.filter(x=>!changes(x));
+              const b=safe.find(x=>keep.some(v=>txt(x).includes(v)))||
+                safe.find(x=>/garder|conserver|confirm|continuer|compris|d.accord|^ok$|^oui|valider|c.est (bien|correct)/.test(txt(x)))||
+                closeBtn()||safe.find(x=>/fermer|annuler|retour/.test(txt(x)))||(safe.length===1?safe[0]:null);
+              if(!b){
+                d.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',keyCode:27,bubbles:true}));
+                document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',keyCode:27,bubbles:true}));
+                R.dismissed=(R.dismissed||[]).concat(['Échap']);await sleep(600);continue;
+              }
               R.dismissed=(R.dismissed||[]).concat([(b.innerText||b.getAttribute('aria-label')||'bouton').trim().slice(0,40)]);
               b.click();await sleep(600);
             }
+            cur=null;
           }
           // Referme les menus restés ouverts avant d'en ouvrir un autre.
           async function closeLeftovers(){
@@ -189,6 +206,7 @@ object VintedPageScripts {
           async function fill(f,out){
             const inp=fieldInput(new RegExp(f.label));
             if(!inp){out.status='absent';return;}
+            keep=f.verify?f.values.map(norm):[];
             if(!f.values.length){out.status=(inp.value||'').trim()?'déjà rempli':'à choisir';return;}
             if((inp.value||'').trim()){
               if(wanted(f,inp.value)){out.status='déjà rempli';out.picked=[inp.value];return;}

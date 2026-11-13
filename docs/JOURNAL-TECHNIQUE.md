@@ -401,3 +401,7 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   compte désormais comme affichée dès qu'un de ses éléments l'est ; une boîte réutilisée dont le contenu change
   est acceptée ; à défaut, la dernière boîte est prise et ses choix contrôlés. Simulation refaite avec une
   boîte de hauteur nulle.
+- **1.5.4** (13 novembre) : cause de l'État faux trouvée dans le relevé (`dismissed`) : après « Neuf sans
+  étiquette », Vinted ouvre une fenêtre avec un bouton « Passer à « Très bon état » », et le script le cliquait
+  faute de mieux. Ce type de bouton (passer à, changer, modifier, autre état) n'est plus jamais touché : bouton
+  qui confirme le choix, sinon la croix, sinon Échap. Le relevé liste les boutons vus (`infoButtons`).
