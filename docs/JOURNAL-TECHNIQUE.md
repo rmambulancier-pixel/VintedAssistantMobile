@@ -405,3 +405,11 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   étiquette », Vinted ouvre une fenêtre avec un bouton « Passer à « Très bon état » », et le script le cliquait
   faute de mieux. Ce type de bouton (passer à, changer, modifier, autre état) n'est plus jamais touché : bouton
   qui confirme le choix, sinon la croix, sinon Échap. Le relevé liste les boutons vus (`infoButtons`).
+- **1.5.5** (14 novembre) : republication en série bloquée sur une page d'annonce, cause non établie (le
+  diagnostic ne donnait que la page). Ajouts : le diagnostic commence par l'étape de la série et le dernier
+  message ; après « Ajouter », si Vinted revient au dressing, la nouvelle annonce y est cherchée (même titre,
+  identifiant inconnu, le plus récent) au lieu d'attendre que l'utilisateur l'ouvre.
+  Précision de l'utilisateur : c'est « Supprimer » sur l'ancienne annonce qui ne répond pas dans la fenêtre
+  intégrée. Cause non vérifiée. Trois parades : confirmations JavaScript affichées en fenêtre Android
+  (`onJsConfirm`), correctif d'affichage étendu aux boîtes `role=dialog`, et bouton de secours qui ouvre
+  l'ancienne annonce dans l'appli Vinted.

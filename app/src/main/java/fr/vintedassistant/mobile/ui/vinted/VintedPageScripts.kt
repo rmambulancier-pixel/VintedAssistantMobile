@@ -342,7 +342,7 @@ object VintedPageScripts {
         (function(){
           if(document.getElementById('vb-dialog-fix'))return 'ok';
           const s=document.createElement('style');s.id='vb-dialog-fix';
-          s.textContent='.ReactModal__Content,.web_ui__Dialog__dialog{opacity:1 !important;visibility:visible !important;}';
+          s.textContent='.ReactModal__Content,.web_ui__Dialog__dialog,.ReactModal__Overlay--after-open,[role="dialog"],[role="alertdialog"]{opacity:1 !important;visibility:visible !important;}';
           document.head.appendChild(s);return 'ok';
         })();
     """.trimIndent()

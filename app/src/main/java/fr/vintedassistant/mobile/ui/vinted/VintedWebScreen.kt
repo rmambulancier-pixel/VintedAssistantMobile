@@ -292,6 +292,29 @@ fun VintedWebScreen(
             SeriesPhase.WAIT_PUBLISH -> {
                 val id = VintedLinks.itemId(currentUrl)
                 if (id != null && !currentUrl.contains("/edit") && id != VintedLinks.itemId(oldUrl)) onNewListing(currentUrl.substringBefore('?'))
+                else if (currentUrl.contains("/member/")) {
+                    // Après « Ajouter », Vinted peut revenir au dressing au lieu d'ouvrir la nouvelle annonce :
+                    // on y cherche l'annonce la plus récente au même titre, inconnue de l'application.
+                    val web = session.webView
+                    val a = article
+                    if (web != null && a != null) {
+                        val known = articles.orEmpty().mapNotNull { VintedLinks.itemId(it.vintedUrl) }.toSet()
+                        val wanted = fr.vintedassistant.mobile.domain.StockLedger.normalize(a.title)
+                        var found: String? = null
+                        for (i in 0 until 6) {
+                            delay(1500)
+                            if (phase != SeriesPhase.WAIT_PUBLISH) break
+                            found = readGrid(web)
+                                .filter { it.itemId !in known && fr.vintedassistant.mobile.domain.StockLedger.normalize(it.title) == wanted }
+                                .maxByOrNull { it.itemId }?.url
+                            if (found != null) break
+                        }
+                        if (phase == SeriesPhase.WAIT_PUBLISH) {
+                            if (found != null) onNewListing(found)
+                            else status = "Nouvelle annonce non repérée dans le dressing. Ouvre-la, puis touche « Elle est en ligne »."
+                        }
+                    }
+                }
             }
             SeriesPhase.WAIT_DELETE -> {
                 val oldId = VintedLinks.itemId(oldUrl)
@@ -329,6 +352,18 @@ fun VintedWebScreen(
                         else -> Unit
                     }
                     TextButton(onClick = { queueIndex = queue.size; phase = SeriesPhase.IDLE; status = "Série arrêtée." }) { Text("Arrêter") }
+                }
+                if (phase == SeriesPhase.WAIT_DELETE && oldUrl.isNotBlank()) {
+                    // Secours : si « Supprimer » ne répond pas ici, l'ancienne annonce s'ouvre dans l'appli Vinted.
+                    OutlinedButton(
+                        onClick = {
+                            try {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(oldUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                status = "Supprime l'ancienne annonce dans l'appli Vinted, reviens ici, puis touche « Suivante »."
+                            } catch (e: Exception) { status = "Impossible d'ouvrir l'appli Vinted." }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("« Supprimer » ne répond pas ? Ouvrir dans l'appli Vinted") }
                 }
             }
             Box {
@@ -396,8 +431,11 @@ fun VintedWebScreen(
                     },
                 ) { Text("Lier cette page") }
                 OutlinedButton(onClick = {
+                    // L'étape de la série en tête : on sait où elle s'est arrêtée, pas seulement sur quelle page.
+                    val series = if (inSeries) "SÉRIE ${queueIndex + 1}/${queue.size}, étape $phase, ancienne annonce : " +
+                        "${VintedLinks.itemId(oldUrl) ?: "aucune"}, ancienne vue : $sawOld\nMESSAGE : ${status ?: ""}\n" else "HORS SÉRIE\nMESSAGE : ${status ?: ""}\n"
                     session.webView?.evaluateJavascript(VintedPageScripts.diagnostic) { r ->
-                        diagnostic = VintedPageScripts.decode(r) ?: "Diagnostic impossible sur cette page."
+                        diagnostic = series + (VintedPageScripts.decode(r) ?: "Diagnostic impossible sur cette page.")
                     }
                 }) { Text("Diagnostic") }
                 OutlinedButton(onClick = {
@@ -479,6 +517,27 @@ fun VintedWebScreen(
                         }
                     }
                     webChromeClient = object : WebChromeClient() {
+                        // Confirmations de la page (« Supprimer cette annonce ? ») : affichées en fenêtre Android.
+                        // Sans cela, une confirmation qui ne peut pas s'afficher est refusée sans rien dire.
+                        override fun onJsConfirm(view: WebView, url: String?, message: String?, result: android.webkit.JsResult): Boolean {
+                            return try {
+                                android.app.AlertDialog.Builder(ctx).setMessage(message.orEmpty())
+                                    .setPositiveButton("OK") { _, _ -> result.confirm() }
+                                    .setNegativeButton("Annuler") { _, _ -> result.cancel() }
+                                    .setOnCancelListener { result.cancel() }.show()
+                                true
+                            } catch (e: Exception) { false }
+                        }
+
+                        override fun onJsAlert(view: WebView, url: String?, message: String?, result: android.webkit.JsResult): Boolean {
+                            return try {
+                                android.app.AlertDialog.Builder(ctx).setMessage(message.orEmpty())
+                                    .setPositiveButton("OK") { _, _ -> result.confirm() }
+                                    .setOnCancelListener { result.confirm() }.show()
+                                true
+                            } catch (e: Exception) { false }
+                        }
+
                         override fun onShowFileChooser(
                             webView: WebView,
                             filePathCallback: ValueCallback<Array<Uri>>,
