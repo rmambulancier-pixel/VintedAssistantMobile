@@ -12,8 +12,8 @@ android {
         applicationId = "fr.vintedassistant.mobile"
         minSdk = 26
         targetSdk = 36
-        versionCode = 54
-        versionName = "1.5.5"
+        versionCode = 55
+        versionName = "1.6.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     // Clé de débogage fixe, versionnée : chaque APK de test a la même signature et

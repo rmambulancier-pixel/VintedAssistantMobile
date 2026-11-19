@@ -29,6 +29,7 @@ class DataExport(
     private val db: VintedBoostDatabase,
     private val articles: ArticleRepository,
     private val purchases: PurchaseRepository,
+    private val incidents: IncidentStore? = null,
 ) {
     suspend fun build(appVersion: String, now: Long = System.currentTimeMillis()): File {
         val articleList = articles.articles.first()
@@ -101,6 +102,15 @@ class DataExport(
                 zip.putNextEntry(ZipEntry("donnees.json"))
                 zip.write(json.toString(2).toByteArray(Charsets.UTF_8))
                 zip.closeEntry()
+                // Journal de Vinted intégré : joint à chaque export, pour ne rien avoir à envoyer en plus.
+                incidents?.takeIf { it.entries.value.isNotEmpty() }?.let { log ->
+                    zip.putNextEntry(ZipEntry("incidents-vinted-integre.txt"))
+                    zip.write(fr.vintedassistant.mobile.domain.IncidentLog.summary(log.entries.value, now, appVersion).toByteArray(Charsets.UTF_8))
+                    zip.closeEntry()
+                    zip.putNextEntry(ZipEntry("incidents.json"))
+                    zip.write(log.json().toByteArray(Charsets.UTF_8))
+                    zip.closeEntry()
+                }
             }
             file
         }

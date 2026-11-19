@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import fr.vintedassistant.mobile.domain.Article
+import fr.vintedassistant.mobile.domain.IncidentLog
 import fr.vintedassistant.mobile.data.importer.ImportedListing
 import fr.vintedassistant.mobile.data.importer.PageImport
 import androidx.compose.runtime.rememberCoroutineScope
@@ -112,6 +113,8 @@ fun VintedWebScreen(
     var currentUrl by remember { mutableStateOf("") }
     var status by remember { mutableStateOf<String?>(null) }
     var diagnostic by remember { mutableStateOf<String?>(null) }
+    var reporting by remember { mutableStateOf(false) }
+    var journal by remember { mutableStateOf(false) }
     var photosReady by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
     var importJob by remember { mutableStateOf<Job?>(null) }
@@ -155,8 +158,16 @@ fun VintedWebScreen(
         )
     }
 
-    /** Remplit le formulaire « Vendre » avec la fiche [a] (photos, texte, catégorie, détails, prix). */
-    suspend fun fillListing(a: Article, rotatePhotos: Boolean = false) {
+    if (journal) IncidentJournalDialog(onDismiss = { journal = false })
+
+    // Journal : chaque remplissage et chaque accroc y sont notés, pour les transmettre et mesurer la fiabilité.
+    val incidents = context.container().incidents
+    val version = remember { fr.vintedassistant.mobile.ui.screens.appVersion(context) }
+    fun log(kind: IncidentLog.Kind, ok: Boolean, message: String, data: org.json.JSONObject? = null, note: String = "") {
+        incidents.add(IncidentLog.Entry(System.currentTimeMillis(), kind, ok, version, IncidentLog.pathOf(currentUrl), message, data?.toString() ?: "", note))
+    }
+
+    suspend fun fillInner(a: Article, rotatePhotos: Boolean, rec: org.json.JSONObject, finish: (Boolean, String) -> Unit) {
         val draft = ListingTemplates.draft(a)
         val description = a.description.ifBlank { draft.description }
         val tags = a.keywords.ifBlank { draft.keywords }
@@ -174,8 +185,10 @@ fun VintedWebScreen(
             if (web.evalJs(VintedPageScripts.formReady) == "1") { ready = true; break }
             delay(300)
         }
+        rec.put("formReady", ready)
         if (!ready) {
             status = "Le formulaire « Vendre » n'est pas encore chargé (connexion lente ou page de connexion). Réessaie « Remplir » dans un instant."
+            finish(false, "Formulaire « Vendre » pas chargé après 12 s")
             return
         }
         web.evaluateJavascript(VintedPageScripts.dialogFix, null)
@@ -189,10 +202,18 @@ fun VintedWebScreen(
             } else a.photos
             session.pendingPhotos = photos.map { store.shareUri(it) }
             photosReady = photos.size
-            web.evalJs(VintedPageScripts.openPhotoPicker)
-            delay(1500)
+            val picker = web.evalJs(VintedPageScripts.openPhotoPicker)
+            rec.put("photosExpected", photos.size).put("picker", picker)
+            // Photos reçues par le formulaire : le sélecteur les a prises (la liste d'attente s'est vidée),
+            // ou elles y étaient déjà (second « Remplir » sur le même formulaire).
+            for (i in 0 until 10) { if (session.pendingPhotos.isEmpty()) break; delay(400) }
+            val taken = session.pendingPhotos.isEmpty() || picker == "already"
+            if (picker == "already") { session.pendingPhotos = emptyList(); photosReady = 0 }
+            rec.put("photosOk", taken)
         }
-        val filled = VintedPageScripts.fillSummary(web.evalJs(VintedPageScripts.fill(a.title, full, "")))
+        val textRaw = web.evalJs(VintedPageScripts.fill(a.title, full, ""))
+        rec.put("text", textRaw?.let { runCatching { org.json.JSONObject(it) }.getOrNull() } ?: org.json.JSONObject.NULL)
+        val filled = VintedPageScripts.fillSummary(textRaw)
         status = "$filled Catégorie en cours…"
         val c = CategoryGuess.of(a)
         web.evalJs(VintedPageScripts.categoryStart(c.query, c.leaves, c.gender, c.avoid))
@@ -204,8 +225,11 @@ fun VintedWebScreen(
             if (json != null && json.optBoolean("done")) { result = json; break }
         }
         status = filled + " " + CategoryGuess.summary(result)
+        rec.put("categoryQuery", c.query)
+        rec.put("category", result ?: org.json.JSONObject().put("ok", false).put("error", "pas de réponse de la page en 30 s"))
         if (result == null || !result.optBoolean("ok")) {
             if (result != null) diagnostic = result.toString(2)
+            finish(false, "Catégorie non choisie : " + (result?.optString("error") ?: "pas de réponse de la page"))
             return
         }
         // Détails apparus avec la catégorie : pour qui, marque, état, couleur, matériau.
@@ -227,9 +251,31 @@ fun VintedWebScreen(
             val shown = web.evalJs(VintedPageScripts.readPrice).orEmpty()
             if (shown.any { it.isDigit() } && !shown.contains("NaN", ignoreCase = true) && !shown.contains("ERREUR")) { priceOk = true; break }
         }
-        web.evalJs(VintedPageScripts.packageSmall)
+        rec.put("package", web.evalJs(VintedPageScripts.packageSmall))
+        rec.put("details", details ?: org.json.JSONObject().put("error", "pas de réponse de la page en 90 s"))
+        rec.put("priceOk", priceOk)
         status = DetailsGuess.summary(details) + (if (priceOk) "" else " Prix à saisir à la main.")
         if (details == null || DetailsGuess.hasGaps(details)) details?.let { diagnostic = it.toString(2) }
+        // Sans faute : tous les champs relevés sont bons (photos, texte, catégorie, détails, prix).
+        val problems = IncidentLog.fieldsOf(IncidentLog.Entry(0, IncidentLog.Kind.FILL, true, "", data = rec.toString()))
+            .filter { !it.second }.map { it.first }
+        val clean = details != null && problems.isEmpty()
+        finish(clean, if (clean) "Tout rempli" else "À reprendre : " + (problems.ifEmpty { listOf("détails sans réponse") }).joinToString(", "))
+    }
+
+    /** Remplit le formulaire « Vendre » avec la fiche [a] et note le résultat de chaque champ dans le journal. */
+    suspend fun fillListing(a: Article, rotatePhotos: Boolean = false) {
+        val started = System.currentTimeMillis()
+        val rec = org.json.JSONObject()
+            .put("article", org.json.JSONObject().put("id", a.id).put("title", a.title).put("category", a.category)
+                .put("brand", a.brand).put("condition", a.condition).put("color", a.color).put("priceCents", a.priceCents)
+                .put("photos", a.photos.size).put("republication", rotatePhotos))
+            .put("series", if (queue.isEmpty()) org.json.JSONObject.NULL else "${queue.indexOf(a.id) + 1}/${queue.size}")
+        fun finish(ok: Boolean, message: String) {
+            rec.put("seconds", (System.currentTimeMillis() - started) / 1000)
+            log(IncidentLog.Kind.FILL, ok, message, rec)
+        }
+        fillInner(a, rotatePhotos, rec, ::finish)
     }
 
     // --- Republication en série : l'application remplit, l'utilisateur touche « Ajouter » puis « Supprimer ». ---
@@ -269,6 +315,7 @@ fun VintedWebScreen(
 
     fun onNewListing(url: String) {
         val a = article ?: return
+        log(IncidentLog.Kind.PUBLISH, true, "Nouvelle annonce reliée à sa fiche")
         onPublished(a)
         onLinkArticle(a.id, url)
         val old = oldUrl
@@ -311,7 +358,11 @@ fun VintedWebScreen(
                         }
                         if (phase == SeriesPhase.WAIT_PUBLISH) {
                             if (found != null) onNewListing(found)
-                            else status = "Nouvelle annonce non repérée dans le dressing. Ouvre-la, puis touche « Elle est en ligne »."
+                            else {
+                                status = "Nouvelle annonce non repérée dans le dressing. Ouvre-la, puis touche « Elle est en ligne »."
+                                log(IncidentLog.Kind.PUBLISH, false, "Retour au dressing après « Ajouter », nouvelle annonce non repérée",
+                                    org.json.JSONObject().put("title", a.title).put("known", known.size))
+                            }
                         }
                     }
                 }
@@ -321,10 +372,35 @@ fun VintedWebScreen(
                 if (oldId != null && VintedLinks.itemId(currentUrl) == oldId) sawOld = true
                 else if (sawOld && currentUrl.isNotBlank() && !currentUrl.contains("/edit")) {
                     status = "Ancienne annonce quittée. Annonce suivante…"
+                    log(IncidentLog.Kind.DELETE, true, "Ancienne annonce supprimée, détection automatique")
                     next()
                 }
             }
             else -> Unit
+        }
+    }
+
+    if (reporting) {
+        ReportDialog(onDismiss = { reporting = false }) { reason, note ->
+            reporting = false
+            val path = IncidentLog.pathOf(currentUrl)
+            val data = org.json.JSONObject()
+                .put("reason", reason)
+                .put("status", status ?: "")
+                .put("article", article?.let { org.json.JSONObject().put("id", it.id).put("title", it.title).put("category", it.category).put("condition", it.condition).put("color", it.color) } ?: org.json.JSONObject.NULL)
+                .put("series", if (inSeries) org.json.JSONObject().put("index", queueIndex + 1).put("size", queue.size).put("phase", phase.name)
+                    .put("oldId", VintedLinks.itemId(oldUrl) ?: 0).put("sawOld", sawOld) else org.json.JSONObject.NULL)
+            val web = session.webView
+            // État de la page joint, sauf sur la messagerie (pseudos, contenu des échanges).
+            if (web == null || IncidentLog.privatePage(path)) {
+                log(IncidentLog.Kind.REPORT, false, reason, data.put("page", "non relevée"), note)
+            } else {
+                web.evaluateJavascript(VintedPageScripts.diagnostic) { raw ->
+                    val page = VintedPageScripts.decode(raw)?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
+                    log(IncidentLog.Kind.REPORT, false, reason, data.put("page", page ?: "illisible"), note)
+                }
+            }
+            Toast.makeText(context, "Noté. Envoie le journal quand tu veux : bouton « Journal ».", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -345,10 +421,16 @@ fun VintedWebScreen(
                     when (phase) {
                         SeriesPhase.WAIT_PUBLISH -> TextButton(onClick = {
                             val id = VintedLinks.itemId(currentUrl)
+                            // Passage à la main : la détection automatique de la nouvelle annonce a manqué.
+                            log(IncidentLog.Kind.PUBLISH, false, "« Elle est en ligne » touché à la main" + (if (id == null) ", pas sur une page d'annonce" else ""))
                             if (id != null && id != VintedLinks.itemId(oldUrl)) onNewListing(currentUrl.substringBefore('?'))
                             else status = "Ouvre la nouvelle annonce dans Vinted (ton dressing), puis touche à nouveau « Elle est en ligne »."
                         }) { Text("Elle est en ligne") }
-                        SeriesPhase.WAIT_DELETE -> TextButton(onClick = { next() }) { Text("Suivante") }
+                        SeriesPhase.WAIT_DELETE -> TextButton(onClick = {
+                            log(IncidentLog.Kind.DELETE, false, "« Suivante » touché à la main : sortie de l'ancienne annonce non détectée",
+                                org.json.JSONObject().put("sawOld", sawOld).put("oldId", VintedLinks.itemId(oldUrl) ?: 0))
+                            next()
+                        }) { Text("Suivante") }
                         else -> Unit
                     }
                     TextButton(onClick = { queueIndex = queue.size; phase = SeriesPhase.IDLE; status = "Série arrêtée." }) { Text("Arrêter") }
@@ -357,6 +439,7 @@ fun VintedWebScreen(
                     // Secours : si « Supprimer » ne répond pas ici, l'ancienne annonce s'ouvre dans l'appli Vinted.
                     OutlinedButton(
                         onClick = {
+                            log(IncidentLog.Kind.DELETE, false, "« Supprimer » ne répond pas : ancienne annonce ouverte dans l'appli Vinted")
                             try {
                                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(oldUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                                 status = "Supprime l'ancienne annonce dans l'appli Vinted, reviens ici, puis touche « Suivante »."
@@ -408,6 +491,8 @@ fun VintedWebScreen(
                         scope.launch { fillListing(a) }
                     },
                 ) { Text("Remplir") }
+                OutlinedButton(onClick = { reporting = true }) { Text("Signaler") }
+                OutlinedButton(onClick = { journal = true }) { Text("Journal") }
                 OutlinedButton(
                     enabled = article != null && article.photos.isNotEmpty(),
                     onClick = {
@@ -507,6 +592,15 @@ fun VintedWebScreen(
                         // Vinted change de page sans recharger (navigation interne) : on suit l'adresse quand même.
                         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
                             currentUrl = url.orEmpty()
+                        }
+
+                        // Erreur de chargement de la page principale (pas des images ni des publicités) : notée.
+                        override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
+                            if (request.isForMainFrame) log(IncidentLog.Kind.PAGE, false, "Page non chargée : ${error.description} (code ${error.errorCode})")
+                        }
+
+                        override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: android.webkit.WebResourceResponse) {
+                            if (request.isForMainFrame && response.statusCode >= 400) log(IncidentLog.Kind.PAGE, false, "Vinted a répondu ${response.statusCode} sur ${IncidentLog.pathOf(request.url.toString())}")
                         }
 
                         override fun onPageFinished(view: WebView, url: String?) {

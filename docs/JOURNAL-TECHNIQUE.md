@@ -413,3 +413,22 @@ un fonctionnement « comme Bleam ». Pas de connexion par identifiants stockés 
   intégrée. Cause non vérifiée. Trois parades : confirmations JavaScript affichées en fenêtre Android
   (`onJsConfirm`), correctif d'affichage étendu aux boîtes `role=dialog`, et bouton de secours qui ouvre
   l'ancienne annonce dans l'appli Vinted.
+
+## 1.6.0 (19 novembre) : journal des incidents de Vinted intégré
+
+But : sortir Vinted intégré de la bêta sur des chiffres, pas sur une impression.
+
+- **Journal** (`domain/IncidentLog`, `data/IncidentStore`) : fichier privé `incidents.jsonl`, une ligne JSON par
+  événement, 600 au plus, hors de Room (un incident doit pouvoir être noté même si la base pose problème).
+- **Noté automatiquement** :
+  - chaque « Remplir » : photos reçues, titre, description, catégorie (avec la requête), chaque détail
+    (Marque, État, Couleur, Matériau), prix, taille du colis, durée, résultat brut des scripts ;
+  - série : nouvelle annonce reliée (ou non repérée), « Elle est en ligne » et « Suivante » touchés à la main,
+    secours « Ouvrir dans l'appli Vinted » ;
+  - erreurs de chargement de la page principale et réponses HTTP ≥ 400.
+- **Signaler** : motif + note libre ; l'état de la page (noms des champs et boutons) et l'étape de la série sont
+  joints. Jamais sur la messagerie (pseudos, échanges).
+- **Envoi** : `journal-vinted-integre-AAAAMMJJ-HHMM.zip` = `resume.txt` + `incidents.json`. Aussi joint à
+  l'export de données habituel.
+- **Sortie de bêta** : 20 remplissages d'affilée sans faute (un champ à reprendre ou un signalement remet à
+  zéro) et 7 jours sans aucun incident. Affiché dans le Journal et dans Réglages.

@@ -23,6 +23,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -159,6 +160,13 @@ fun SettingsScreen(
             style = MaterialTheme.typography.bodySmall,
         )
         Text("Vinted intégré (bêta) : désormais en haut de l'onglet Stock.", style = MaterialTheme.typography.bodySmall)
+        var journal by remember { mutableStateOf(false) }
+        val log by context.container().incidents.entries.collectAsState()
+        OutlinedButton(onClick = { journal = true }, modifier = Modifier.fillMaxWidth()) {
+            val r = fr.vintedassistant.mobile.domain.IncidentLog.readiness(log, System.currentTimeMillis())
+            Text("Journal de Vinted intégré" + if (r.fills > 0) " • série ${r.streak.coerceAtMost(20)}/20 • ${r.incidents7d} incident(s) en 7 j" else "")
+        }
+        if (journal) fr.vintedassistant.mobile.ui.vinted.IncidentJournalDialog(onDismiss = { journal = false })
 
         SectionTitle("Finances")
         Field("Taux de cotisations sociales (%)", rate, { rate = it }, decimal = true)

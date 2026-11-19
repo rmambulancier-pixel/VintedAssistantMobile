@@ -49,7 +49,9 @@ class AppContainer(context: Context) {
 
     val corrections = fr.vintedassistant.mobile.data.Corrections(articleRepository, purchaseRepository)
 
-    val dataExport = fr.vintedassistant.mobile.data.DataExport(context, database, articleRepository, purchaseRepository)
+    val incidents = fr.vintedassistant.mobile.data.IncidentStore(context)
+
+    val dataExport = fr.vintedassistant.mobile.data.DataExport(context, database, articleRepository, purchaseRepository, incidents)
 
     val backup = fr.vintedassistant.mobile.data.Backup(
         context = context,
