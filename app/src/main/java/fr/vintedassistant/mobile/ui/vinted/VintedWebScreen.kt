@@ -114,6 +114,10 @@ fun VintedWebScreen(
     var status by remember { mutableStateOf<String?>(null) }
     var diagnostic by remember { mutableStateOf<String?>(null) }
     var reporting by remember { mutableStateOf(false) }
+    var filling by remember { mutableStateOf(false) }
+    var hidden by remember { mutableStateOf<org.json.JSONObject?>(null) }
+    var hiddenSeen by remember { mutableStateOf("") }
+    var unknownListings by remember { mutableStateOf<List<fr.vintedassistant.mobile.data.importer.ImportedListing>>(emptyList()) }
     var journal by remember { mutableStateOf(false) }
     var photosReady by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
@@ -206,10 +210,18 @@ fun VintedWebScreen(
             rec.put("photosExpected", photos.size).put("picker", picker)
             // Photos reçues par le formulaire : le sélecteur les a prises (la liste d'attente s'est vidée),
             // ou elles y étaient déjà (second « Remplir » sur le même formulaire).
-            for (i in 0 until 10) { if (session.pendingPhotos.isEmpty()) break; delay(400) }
-            val taken = session.pendingPhotos.isEmpty() || picker == "already"
+            for (i in 0 until 20) { if (session.pendingPhotos.isEmpty()) break; delay(400) }
+            val consumed = session.pendingPhotos.isEmpty()
             if (picker == "already") { session.pendingPhotos = emptyList(); photosReady = 0 }
-            rec.put("photosOk", taken)
+            // Vignettes réellement affichées : le chargement des photos prend quelques secondes.
+            var shown = 0
+            for (i in 0 until 16) {
+                shown = web.evalJs(VintedPageScripts.photoCount)?.toIntOrNull() ?: 0
+                if (shown >= photos.size) break
+                delay(500)
+            }
+            rec.put("photosConsumed", consumed).put("photosShown", shown)
+            rec.put("photosOk", shown >= photos.size || (shown == 0 && (consumed || picker == "already")))
         }
         val textRaw = web.evalJs(VintedPageScripts.fill(a.title, full, ""))
         rec.put("text", textRaw?.let { runCatching { org.json.JSONObject(it) }.getOrNull() } ?: org.json.JSONObject.NULL)
@@ -245,10 +257,13 @@ fun VintedWebScreen(
         val cents = a.priceCents
         val dot = (cents / 100).toString() + (if (cents % 100 == 0L) "" else "." + (cents % 100).toString().padStart(2, '0'))
         var priceOk = false
-        for (v in listOf(dot, dot.replace('.', ','))) {
-            web.evalJs(VintedPageScripts.setPrice(v))
-            delay(600)
+        val priceTries = org.json.JSONArray()
+        rec.put("priceTries", priceTries)
+        for (v in listOf(dot, dot.replace('.', ','), dot)) {
+            val set = web.evalJs(VintedPageScripts.setPrice(v))
+            delay(900)
             val shown = web.evalJs(VintedPageScripts.readPrice).orEmpty()
+            priceTries.put(org.json.JSONObject().put("typed", v).put("set", set ?: "").put("shown", shown))
             if (shown.any { it.isDigit() } && !shown.contains("NaN", ignoreCase = true) && !shown.contains("ERREUR")) { priceOk = true; break }
         }
         rec.put("package", web.evalJs(VintedPageScripts.packageSmall))
@@ -275,7 +290,8 @@ fun VintedWebScreen(
             rec.put("seconds", (System.currentTimeMillis() - started) / 1000)
             log(IncidentLog.Kind.FILL, ok, message, rec)
         }
-        fillInner(a, rotatePhotos, rec, ::finish)
+        filling = true
+        try { fillInner(a, rotatePhotos, rec, ::finish) } finally { filling = false }
     }
 
     // --- Republication en série : l'application remplit, l'utilisateur touche « Ajouter » puis « Supprimer ». ---
@@ -378,6 +394,60 @@ fun VintedWebScreen(
             }
             else -> Unit
         }
+    }
+
+    // Boîte de Vinted invisible (ex. confirmation de « Supprimer », écran grisé sans rien de lisible) :
+    // l'application l'affiche en fenêtre Android. Le bouton choisi par l'utilisateur est cliqué, rien d'autre.
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1200)
+            val web = session.webView ?: continue
+            if (filling || importJob != null || loading || hidden != null) continue
+            val raw = web.evalJs(VintedPageScripts.hiddenModal).orEmpty()
+            if (raw.isBlank()) { hiddenSeen = ""; continue }
+            val o = runCatching { org.json.JSONObject(raw) }.getOrNull() ?: continue
+            if (o.optString("text") == hiddenSeen) continue
+            hiddenSeen = o.optString("text")
+            hidden = o
+            log(IncidentLog.Kind.PAGE, true, "Boîte Vinted invisible affichée en fenêtre : " + o.optString("text").take(80), o)
+        }
+    }
+    hidden?.let { o ->
+        val buttons = o.optJSONArray("buttons") ?: org.json.JSONArray()
+        AlertDialog(
+            onDismissRequest = { hidden = null },
+            title = { Text("Vinted demande") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(o.optString("text"), style = MaterialTheme.typography.bodyMedium)
+                    Text("Cette fenêtre de Vinted ne s'affichait pas dans la page. Choisis ici :", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    for (i in 0 until buttons.length()) {
+                        val b = buttons.getJSONObject(i)
+                        val label = b.optString("t")
+                        val danger = Regex("supprim|delete", RegexOption.IGNORE_CASE).containsMatchIn(label)
+                        OutlinedButton(
+                            onClick = {
+                                session.webView?.evaluateJavascript(VintedPageScripts.clickModalButton(b.optInt("i")), null)
+                                hidden = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(label, color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { hidden = null }) { Text("Fermer") } },
+        )
+    }
+
+    // Dressing ouvert : annonces en ligne que l'application ne connaît pas (créées directement sur Vinted).
+    LaunchedEffect(currentUrl, loading) {
+        unknownListings = emptyList()
+        if (loading || !currentUrl.contains("/member/")) return@LaunchedEffect
+        delay(2500)
+        val web = session.webView ?: return@LaunchedEffect
+        val known = articles.orEmpty().mapNotNull { VintedLinks.itemId(it.vintedUrl) }.toSet()
+        unknownListings = readGrid(web).filter { it.itemId !in known }
     }
 
     if (reporting) {
@@ -548,6 +618,26 @@ fun VintedWebScreen(
                     status = "Session Vinted effacée de l'application."
                 }) { Text("Se déconnecter") }
             }
+            if (unknownListings.isNotEmpty() && importJob == null) {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+                    Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "${unknownListings.size} annonce(s) du dressing absente(s) de l'application : " +
+                                unknownListings.take(3).joinToString { it.title.take(40) } + (if (unknownListings.size > 3) "…" else ""),
+                            Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
+                        )
+                        TextButton(onClick = {
+                            val web = session.webView ?: return@TextButton
+                            importJob = scope.launch {
+                                try { status = runImport(context, web, session, currentUrl) { importProgress = it } + " Rattache-les ensuite à leur achat dans Stock, Registre et contrôle." }
+                                catch (e: CancellationException) { status = "Import arrêté."; throw e }
+                                catch (e: Exception) { status = "Import interrompu par une erreur." }
+                                finally { importProgress = null; importJob = null; unknownListings = emptyList() }
+                            }
+                        }) { Text("Importer") }
+                    }
+                }
+            }
             importProgress?.let { p ->
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                     Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -600,7 +690,12 @@ fun VintedWebScreen(
                         }
 
                         override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: android.webkit.WebResourceResponse) {
-                            if (request.isForMainFrame && response.statusCode >= 400) log(IncidentLog.Kind.PAGE, false, "Vinted a répondu ${response.statusCode} sur ${IncidentLog.pathOf(request.url.toString())}")
+                            if (request.isForMainFrame && response.statusCode >= 400) {
+                                val path = IncidentLog.pathOf(request.url.toString())
+                                // Annonce supprimée ou vendue (404) : normal, noté pour information seulement.
+                                val gone = response.statusCode == 404 && path.startsWith("/items/")
+                                log(IncidentLog.Kind.PAGE, gone, (if (gone) "Annonce introuvable (supprimée ?) : " else "Vinted a répondu ${response.statusCode} sur ") + path)
+                            }
                         }
 
                         override fun onPageFinished(view: WebView, url: String?) {

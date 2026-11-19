@@ -21,3 +21,21 @@ class DetailsGuessTest {
         assertEquals(emptyList<String>(), colors("Bracelet jonc ouvert"))
     }
 }
+
+class CategoryGuessTest {
+    private fun of(title: String) = CategoryGuess.of(
+        fr.vintedassistant.mobile.domain.Article(id = 1, title = title, costCents = 0, priceCents = 600,
+            status = fr.vintedassistant.mobile.domain.ArticleStatus.entries.first(), createdAt = 0),
+    )
+
+    @Test fun `un bracelet evite les bracelets de cheville`() {
+        val g = of("Bracelet trèfle strass rose argenté")
+        assertEquals("bracelet", g.query)
+        org.junit.Assert.assertTrue("cheville" in g.avoid)
+    }
+
+    @Test fun `un bijou de cheville ne s'evite pas lui-meme`() {
+        val g = of("Bijoux de cheville perles")
+        org.junit.Assert.assertFalse("cheville" in g.avoid)
+    }
+}

@@ -59,10 +59,15 @@ object VintedPageScripts {
           const norm=s=>(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
           function setVal(e,v){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,v);
             e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}
-          const dialog=()=>document.querySelector('.ReactModal__Content');
+          const dialog=()=>{const all=document.querySelectorAll('.ReactModal__Content');return all.length?all[all.length-1]:null;};
           const cells=()=>{const d=dialog();return d?Array.from(d.querySelectorAll('.web_ui__Cell__clickable,[class*="Cell__clickable"]')):[];};
           const text=c=>norm(c.innerText||c.textContent);
-          const score=t=>(p.leaf.some(l=>t.includes(l))?4:0)+(t.includes(p.gender)?2:0)+(t.includes('bijou')?1:0)-(p.avoid.some(a=>t.includes(a))?3:0);
+          // Un bijou va dans « Accessoires > Bijoux ». Le 19 novembre, « Femmes > Vêtements de sport > Accessoires de
+          // sport » l'emportait grâce au mot « femmes » : le rayon Bijoux pèse désormais plus que le genre, et les
+          // rayons sans rapport (sport, animaux, électronique, maison, outils) sont exclus.
+          const BAD=/sport|fitness|animaux|electronique|connecte|maison|outils|bricolage|quincaillerie|musculation|remplacement/;
+          const score=t=>(p.leaf.some(l=>t.includes(l))?4:0)+(t.includes('bijou')?3:0)+(t.includes(p.gender)?1:0)
+            -(p.avoid.some(a=>t.includes(a))?3:0)-(BAD.test(t)?10:0);
           const saveBtn=()=>document.querySelector('[data-testid="input-dropdown-save-button"]');
           const canSave=b=>b&&!b.disabled&&!/disabled/.test(b.className);
           (async()=>{
@@ -80,6 +85,13 @@ object VintedPageScripts {
                 R.fields=Array.from(document.querySelectorAll('input,textarea')).map(e=>(e.getAttribute('data-testid')||e.id||e.name||e.tagName).slice(0,60)).slice(0,30);
                 R.labels=Array.from(document.querySelectorAll('label')).map(l=>(l.innerText||'').trim().slice(0,40)).filter(Boolean).slice(0,30);
                 return;
+              }
+              // Un menu resté ouvert (ex. Couleur, lors d'un second « Remplir ») masquait la liste des catégories.
+              for(let k=0;k<3&&dialog();k++){
+                const d0=dialog();
+                if(/cat[eé]gorie/i.test((d0.innerText||'').slice(0,200)))break;
+                const c=d0.querySelector('.web_ui__Navigation__right button, [data-testid$="close-button"]');
+                if(!c)break;c.click();await sleep(500);
               }
               if(!dialog()){inp.focus();inp.click();}
               for(let i=0;i<25&&!dialog();i++)await sleep(150);
@@ -328,6 +340,37 @@ object VintedPageScripts {
           return 'none';
         })();
     """.trimIndent()
+
+    /** Nombre de photos affichées dans le formulaire (vignettes de la grille d'ajout). */
+    val photoCount: String = "(function(){const g=document.querySelectorAll('[class*=\"media-select__grid\"] img');" +
+        "if(g.length)return String(g.length);" +
+        "return String(Array.from(document.querySelectorAll('img')).filter(i=>/^(blob|data):/.test(i.src||'')).length);})();"
+
+    /**
+     * Boîte de dialogue de Vinted ouverte mais invisible dans la fenêtre intégrée (hauteur nulle) : son texte et ses
+     * boutons, pour les afficher en fenêtre Android. Rien n'est cliqué ici.
+     */
+    val hiddenModal: String = """
+        (function(){
+          const all=Array.from(document.querySelectorAll('.ReactModal__Content'));
+          const m=all[all.length-1];if(!m)return '';
+          const r=m.getBoundingClientRect();
+          // Bouton réellement visible : c'est lui (ou son contenu) qui se trouve au premier plan à son centre.
+          const shown=Array.from(m.querySelectorAll('button,[role="button"]')).some(b=>{const q=b.getBoundingClientRect();
+            if(q.width<4||q.height<4||q.bottom<0||q.top>innerHeight)return false;
+            const x=Math.min(Math.max(q.left+q.width/2,0),innerWidth-1),y=Math.min(Math.max(q.top+q.height/2,0),innerHeight-1);
+            const top=document.elementFromPoint(x,y);return !!top&&(top===b||b.contains(top));});
+          if(shown)return ''; // boîte lisible : rien à faire
+          const btns=Array.from(m.querySelectorAll('button,[role="button"]')).map((b,i)=>({i,t:(b.innerText||b.getAttribute('aria-label')||'').trim().slice(0,60)})).filter(x=>x.t);
+          if(!btns.length)return '';
+          return JSON.stringify({text:(m.innerText||'').replace(/\s+/g,' ').trim().slice(0,400),buttons:btns});
+        })();
+    """.trimIndent()
+
+    /** Clique le bouton n° [index] de la boîte de dialogue ouverte (choisi par l'utilisateur dans la fenêtre Android). */
+    fun clickModalButton(index: Int): String =
+        "(function(){const all=document.querySelectorAll('.ReactModal__Content');const m=all[all.length-1];if(!m)return 'absent';" +
+            "const b=m.querySelectorAll('button,[role=\"button\"]')[$index];if(!b)return 'absent';b.click();return 'ok';})();"
 
     /** Formulaire de mise en vente affiché : champ titre présent. */
     val formReady: String = "(function(){return !!document.querySelector('input[name=\"title\"],[data-testid*=\"title\"] input,input#title')||document.querySelectorAll('textarea').length>0?'1':'0';})();"

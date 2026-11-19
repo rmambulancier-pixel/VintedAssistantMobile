@@ -28,7 +28,10 @@ data class CategoryGuess(val query: String, val leaves: List<String>, val gender
             }.minByOrNull { it.first }?.second ?: ("bijoux" to listOf("bijou"))
             val men = Regex("\\bhomme").containsMatchIn(text)
             val gender = if (men) "hommes" else "femmes"
-            return CategoryGuess(type.first, type.second, gender, listOf("enfant", "fille", "garcon", if (men) "femmes" else "hommes"))
+            // « Bracelets de cheville » ne doit jamais l'emporter sur « Bracelets » (et inversement pour un bijou de cheville).
+            val ankle = type.first.contains("cheville")
+            return CategoryGuess(type.first, type.second, gender,
+                listOf("enfant", "fille", "garcon", if (men) "femmes" else "hommes") + (if (ankle) emptyList() else listOf("cheville")))
         }
 
         fun summary(result: JSONObject?): String {

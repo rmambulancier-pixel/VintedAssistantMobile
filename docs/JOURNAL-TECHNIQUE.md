@@ -432,3 +432,22 @@ But : sortir Vinted intégré de la bêta sur des chiffres, pas sur une impressi
   l'export de données habituel.
 - **Sortie de bêta** : 20 remplissages d'affilée sans faute (un champ à reprendre ou un signalement remet à
   zéro) et 7 jours sans aucun incident. Affiché dans le Journal et dans Réglages.
+
+## 1.6.1 (19 novembre) : premières corrections tirées du journal
+
+Journal reçu : 4 remplissages, 0 sans faute.
+- **Catégorie fausse sans alerte** : « Bracelets » choisi dans « Femmes > Vêtements > Vêtements de sport >
+  Accessoires de sport » (score 6, grâce au mot « femmes ») au lieu de « Accessoires de mode > Bijoux » (5).
+  Nouveau barème : type +4, « bijou » +3, genre +1, rayons sans rapport (sport, animaux, électronique, maison,
+  outils…) −10, « cheville » évité sauf pour un bijou de cheville.
+- **« Liste des catégories vide »** : le menu Couleur d'un « Remplir » précédent était resté ouvert, et le
+  script lisait cette boîte. Les menus restés ouverts sont refermés, et seule la dernière boîte est lue.
+- **Photos 0/4** : mesure fausse (le sélecteur prenait plus de 4 s). On attend 8 s, puis on compte les
+  vignettes affichées (`photoCount`).
+- **Prix** : chaque essai est noté (`priceTries` : valeur tapée, réponse, affichage), avec un troisième essai.
+- **« Supprimer » grisé** : la confirmation de Vinted s'ouvre avec une hauteur nulle (fond grisé, rien de
+  visible). `hiddenModal` repère une boîte dont aucun bouton n'est au premier plan (`elementFromPoint`) et
+  l'application affiche son texte et ses boutons en fenêtre Android ; seul le bouton choisi est cliqué.
+- **Annonces absentes de l'application** : sur le dressing, les annonces inconnues sont listées avec
+  « Importer ».
+- 404 sur une page d'annonce : noté pour information (annonce supprimée), sans compter comme incident.
