@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fond du widget : sombre et arrondi, comme les widgets voisins de l'écran d'accueil. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#F21E1F22" />
+    <corners android:radius="28dp" />
+</shape>

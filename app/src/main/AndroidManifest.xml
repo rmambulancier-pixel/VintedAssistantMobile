@@ -47,6 +47,19 @@
             </intent-filter>
         </service>
 
+        <!-- Widget d'écran d'accueil : ventes du mois, colis à déposer, stock. -->
+        <receiver
+            android:name=".widget.SalesWidget"
+            android:exported="false"
+            android:label="@string/widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/sales_widget_info" />
+        </receiver>
+
         <!-- Bouton « Copier » des réponses préparées (notification). -->
         <receiver
             android:name=".notifications.CopyReplyReceiver"

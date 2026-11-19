@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">Ventes du mois, objectif, colis à déposer et stock en un coup d\'œil.</string>
+    <string name="widget_label">Vinted Assistant</string>
+</resources>

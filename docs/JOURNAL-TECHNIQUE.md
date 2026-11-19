@@ -494,3 +494,14 @@ Corrections (`domain/ImportReconcile`, testé) :
   créer une vente, l'import cherche une vente du même titre (45 jours) sur une autre fiche dont l'annonce n'est
   pas vendue, et la déplace (`misattributedSale`). Correction des données : fichier de corrections
   (`moveSales`, `deleteSales`, nouveaux types, vérifiés par titre et prix, appliqués après confirmation).
+
+## 1.7.0 (19 novembre) : widget d'écran d'accueil
+
+- `widget/SalesWidget` (AppWidgetProvider + RemoteViews, aucune dépendance ajoutée) : ventes du mois,
+  pourcentage et barre d'objectif, nombre de ventes et bénéfice net, colis à déposer avec la date limite
+  (en rose si aujourd'hui ou en retard), stock (en ligne, à mettre en vente, réassort et date d'arrivée).
+- 5 × 2 par défaut, redimensionnable jusqu'à 2 × 2 ; sur Android 12+, mise en page étroite ou large selon la
+  taille réelle. Fond sombre arrondi (28 dp), assorti aux widgets voisins.
+- Mise à jour : 2 s après tout changement (fiches, ventes, achats, réglages) et toutes les 30 minutes.
+- Toucher : ouvre l'application, sur l'onglet Ventes s'il y a un colis à déposer.
+- Contenu calculé par `domain/WidgetSummary` (testé).
