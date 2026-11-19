@@ -11,6 +11,38 @@ import org.json.JSONTokener
  */
 object VintedPageScripts {
 
+    /**
+     * Referme tous les menus et boîtes de Vinted encore ouverts : croix, puis bouton « Fait », « Fermer »,
+     * « Annuler » ou « OK », puis touche Échap et clic sur le fond. Jamais un bouton qui change une valeur.
+     * Le 19 novembre, un menu État resté ouvert a empêché le choix de la catégorie et faussé le prix.
+     */
+    private const val CLOSE_ALL = """
+          async function vbCloseAll(){
+            const pause=ms=>new Promise(r=>setTimeout(r,ms));
+            for(let k=0;k<6;k++){
+              const all=document.querySelectorAll('.ReactModal__Content');const d=all.length?all[all.length-1]:null;
+              if(!d)return true;
+              const btns=Array.from(d.querySelectorAll('button')).filter(b=>!b.disabled);
+              const c=d.querySelector('.web_ui__Navigation__right button, [data-testid$="close-button"], [aria-label="Fermer"], [aria-label="Close"]')||
+                btns.find(b=>/^(fait|fermer|annuler|ok)$/i.test((b.innerText||'').trim()));
+              if(c&&k<4){c.click();}
+              else{
+                const esc={key:'Escape',code:'Escape',keyCode:27,which:27,bubbles:true};
+                d.dispatchEvent(new KeyboardEvent('keydown',esc));document.dispatchEvent(new KeyboardEvent('keydown',esc));
+                const ov=d.parentElement;
+                if(ov&&/Overlay/.test(String(ov.className))){ov.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));ov.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));ov.click();}
+              }
+              await pause(500);
+            }
+            return !document.querySelector('.ReactModal__Content');
+          }
+    """
+
+    /** Ferme les menus restés ouverts ; résultat dans `window.__vbClosed` (« 1 » si plus rien n'est ouvert). */
+    val closeDialogs: String = "(function(){window.__vbClosed='';" + CLOSE_ALL +
+        "vbCloseAll().then(ok=>{window.__vbClosed=ok?'1':'0';});return 'started';})();"
+    val closedResult: String = "(function(){return String(window.__vbClosed||'');})();"
+
     private const val HELPERS = """
         function vbVisible(e){const r=e.getBoundingClientRect();return r.width>0&&r.height>0;}
         function vbLabel(e){let t='';try{if(e.id){const l=document.querySelector('label[for="'+CSS.escape(e.id)+'"]');if(l)t+=l.innerText;}}catch(x){}
@@ -55,6 +87,7 @@ object VintedPageScripts {
         return """
         (function(p){
           const R={done:false,steps:[],options:[]};window.__vbCat=R;
+          $CLOSE_ALL
           const sleep=ms=>new Promise(r=>setTimeout(r,ms));
           const norm=s=>(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
           function setVal(e,v){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,v);
@@ -86,16 +119,15 @@ object VintedPageScripts {
                 R.labels=Array.from(document.querySelectorAll('label')).map(l=>(l.innerText||'').trim().slice(0,40)).filter(Boolean).slice(0,30);
                 return;
               }
-              // Un menu resté ouvert (ex. Couleur, lors d'un second « Remplir ») masquait la liste des catégories.
-              for(let k=0;k<3&&dialog();k++){
-                const d0=dialog();
-                if(/cat[eé]gorie/i.test((d0.innerText||'').slice(0,200)))break;
-                const c=d0.querySelector('.web_ui__Navigation__right button, [data-testid$="close-button"]');
-                if(!c)break;c.click();await sleep(500);
-              }
-              if(!dialog()){inp.focus();inp.click();}
-              for(let i=0;i<25&&!dialog();i++)await sleep(150);
-              const d=dialog();if(!d){R.error='menu des catégories non ouvert';return;}
+              // Menus restés ouverts (Couleur, État… d'un « Remplir » précédent) : refermés avant tout.
+              R.closedBefore=await vbCloseAll();
+              // Un menu de détail (titre État, Couleur…) n'est jamais pris pour celui des catégories.
+              const other=x=>/^(etat|couleur|marque|materiau|matiere|pour qui|taille|prix)\b/.test(norm(x.innerText||'').slice(0,20));
+              const catDialog=()=>{const x=dialog();return x&&!other(x)?x:null;};
+              inp.focus();inp.click();
+              for(let i=0;i<25&&!catDialog();i++)await sleep(150);
+              const d=catDialog();
+              if(!d){R.error=dialog()?'un autre menu reste ouvert ('+norm(dialog().innerText||'').slice(0,20)+')':'menu des catégories non ouvert';return;}
               const cs=getComputedStyle(d),rc=d.getBoundingClientRect(),ov=getComputedStyle(d.parentElement);
               R.probe={rect:[rc.x,rc.y,rc.width,rc.height].map(Math.round),opacity:cs.opacity,transform:cs.transform,
                 visibility:cs.visibility,position:cs.position,overlayOpacity:ov.opacity,viewport:[innerWidth,innerHeight]};
@@ -145,6 +177,7 @@ object VintedPageScripts {
     fun detailsStart(fields: org.json.JSONArray): String = """
         (function(fields){
           const R={done:false,fields:[]};window.__vbDrop=R;
+          $CLOSE_ALL
           const sleep=ms=>new Promise(r=>setTimeout(r,ms));
           const norm=s=>(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
           function setVal(e,v){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,v);
@@ -205,14 +238,7 @@ object VintedPageScripts {
             cur=null;
           }
           // Referme les menus restés ouverts avant d'en ouvrir un autre.
-          async function closeLeftovers(){
-            cur=null;
-            for(let k=0;k<3;k++){
-              const d=dialog();if(!d)return;
-              const c=closeBtn();if(!c)return;
-              c.click();await sleep(500);
-            }
-          }
+          async function closeLeftovers(){cur=null;await vbCloseAll();}
           const wanted=(f,value)=>{const v=norm(value);if(!v)return false;if(!f.verify)return true;
             return f.values.some(w=>{const n=norm(w);return v===n||v.includes(n);});};
           async function fill(f,out){
@@ -354,6 +380,9 @@ object VintedPageScripts {
         (function(){
           const all=Array.from(document.querySelectorAll('.ReactModal__Content'));
           const m=all[all.length-1];if(!m)return '';
+          // Seulement une boîte de confirmation : un menu à choix (lignes, cases, champ de recherche) n'est jamais repris.
+          if(m.querySelector('.web_ui__Cell__clickable,[class*="Cell__clickable"],[role="option"],[role="radio"],[role="checkbox"],input,textarea'))return '';
+          if(m.querySelectorAll('button,[role="button"]').length>4)return '';
           const r=m.getBoundingClientRect();
           // Bouton réellement visible : c'est lui (ou son contenu) qui se trouve au premier plan à son centre.
           const shown=Array.from(m.querySelectorAll('button,[role="button"]')).some(b=>{const q=b.getBoundingClientRect();

@@ -257,6 +257,11 @@ fun VintedWebScreen(
         // Prix en dernier : point décimal d'abord (« 9.50 »), virgule si Vinted ne le comprend pas.
         val cents = a.priceCents
         val dot = (cents / 100).toString() + (if (cents % 100 == 0L) "" else "." + (cents % 100).toString().padStart(2, '0'))
+        // Un menu resté ouvert garde le clavier : le prix tapé n'arrive pas dans son champ (« NaN € »).
+        web.evalJs(VintedPageScripts.closeDialogs)
+        var closed = ""
+        for (i in 0 until 12) { delay(300); closed = web.evalJs(VintedPageScripts.closedResult).orEmpty(); if (closed.isNotEmpty()) break }
+        rec.put("menusClosedBeforePrice", closed)
         var priceOk = false
         val priceTries = org.json.JSONArray()
         rec.put("priceTries", priceTries)

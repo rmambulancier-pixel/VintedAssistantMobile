@@ -469,3 +469,13 @@ Corrections (`domain/ImportReconcile`, testé) :
   un doublon sans achat ni vente dont l'annonce n'existe plus (seulement si les deux onglets ont été lus) ;
 - badge « Vendu » lu sur chaque carte ; onglet « Vendus » ignoré s'il est identique à « Actifs » ;
 - une annonce vendue inconnue ne crée plus de vente sans date, sauf au tout premier import.
+
+## 1.6.3 (19 novembre) : menus restés ouverts
+
+- Second « Remplir » : le menu État (sans croix) restait ouvert ; la catégorie lisait ses lignes (« aucune
+  catégorie sûre ») et le prix tapé n'arrivait pas dans son champ (« NaN € »). `CLOSE_ALL` referme tout menu
+  ouvert (croix, « Fait », « Fermer », « Annuler », « OK », puis Échap et clic sur le fond), avant la
+  catégorie, avant chaque détail et avant le prix. Un menu de détail n'est jamais pris pour celui des
+  catégories.
+- La fenêtre « Vinted demande » s'ouvrait sur un menu Couleur (bouton « Fait » hors écran). Elle ne reprend
+  plus que les boîtes de confirmation : ni lignes à choisir, ni cases, ni champ, 4 boutons au plus.
