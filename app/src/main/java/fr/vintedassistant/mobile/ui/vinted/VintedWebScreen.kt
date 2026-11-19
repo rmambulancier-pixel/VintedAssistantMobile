@@ -63,6 +63,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -447,7 +448,7 @@ fun VintedWebScreen(
         delay(2500)
         val web = session.webView ?: return@LaunchedEffect
         val known = articles.orEmpty().mapNotNull { VintedLinks.itemId(it.vintedUrl) }.toSet()
-        unknownListings = readGrid(web).filter { it.itemId !in known }
+        unknownListings = readGrid(web).filter { it.itemId !in known && !it.soldBadge }
     }
 
     if (reporting) {
@@ -857,34 +858,52 @@ private suspend fun runImport(
     val activeFilter = web.evalJs(VintedPageScripts.clickFilter("actifs")) == "true"
     if (activeFilter) delay(2_500)
     scrollToEnd(web)
-    val active = readGrid(web)
+    val activeGrid = readGrid(web)
 
     // 2. Annonces vendues.
     progress("Chargement des annonces vendues…")
     val soldFilter = web.evalJs(VintedPageScripts.clickFilter("vendus")) == "true"
-    val sold = if (soldFilter) {
+    val soldGrid = if (soldFilter) {
         delay(2_500)
         scrollToEnd(web)
-        val activeIds = if (activeFilter) active.map { it.itemId }.toSet() else emptySet()
-        readGrid(web).filter { it.itemId !in activeIds }
-    } else {
-        emptyList()
-    }
-    val soldIds = sold.map { it.itemId }.toSet()
-    val all = active.filter { it.itemId !in soldIds }.map { it to false } + sold.map { it to true }
+        readGrid(web)
+    } else emptyList()
+    // Onglet « Vendus » réellement différent de « Actifs » : sinon le clic n'a rien changé, on ne s'y fie pas.
+    val soldTabOk = soldFilter && soldGrid.map { it.itemId }.toSet() != activeGrid.map { it.itemId }.toSet()
+    // Vendue : lue dans l'onglet « Vendus », ou carte portant le badge « Vendu » (quel que soit l'onglet).
+    val soldList = ((if (soldTabOk) soldGrid else emptyList()) + (activeGrid + soldGrid).filter { it.soldBadge })
+        .distinctBy { it.itemId }
+    val soldIds = soldList.map { it.itemId }.toSet()
+    val active = activeGrid.filter { it.itemId !in soldIds }
+    val activeIds = active.map { it.itemId }.toSet()
+    val all = active.map { it to false } + soldList.map { it to true }
     if (all.isEmpty()) {
         loadAndWait(web, session, profileUrl)
         return "Aucune annonce trouvée sur cette page. Lance le diagnostic sur ton dressing et transmets-le."
     }
 
-    // 3. Fiches de base, tout de suite.
+    // 3. Doublons d'avant : annonces republiées, annonces vendues lues comme en ligne.
+    progress("Vérification des doublons…")
+    val fix = repository.reconcileImport(activeIds, soldIds, reliable = activeFilter && soldTabOk)
+
+    // 4. Fiches de base. Une annonce vendue inconnue ne crée une vente que lors du tout premier import :
+    // ensuite, la vente est déjà enregistrée (notification ou export Vinted) et serait comptée deux fois.
+    val scan = activeIds + soldIds
+    val taken = HashSet<Long>()
+    val createSold = repository.sales.first().isEmpty()
     var created = 0
-    all.forEach { (listing, isSold) -> if (repository.upsertImported(listing, isSold).created) created++ }
+    var soldUnknown = 0
+    all.forEach { (listing, isSold) ->
+        if (listing.itemId in fix.skipItemIds) return@forEach
+        val res = repository.upsertImported(listing, isSold, scan, taken, createSold)
+        if (res.created) created++
+        if (res.articleId == 0L) soldUnknown++
+    }
 
     // 4. Détail de chaque annonce (description, marque, taille, état, photos).
     var detailed = 0
     var photos = 0
-    val toDetail = all.take(MAX_DETAILED)
+    val toDetail = all.filter { it.first.itemId !in fix.skipItemIds }.take(MAX_DETAILED)
     toDetail.forEachIndexed { index, (listing, isSold) ->
         progress("Fiche ${index + 1} / ${toDetail.size} : ${listing.title}")
         if (!loadAndWait(web, session, listing.url)) return@forEachIndexed
@@ -896,20 +915,26 @@ private suspend fun runImport(
                 views = item.views ?: listing.views,
                 priceCents = item.priceCents ?: listing.priceCents,
             )
-            val result = repository.upsertImported(merged, isSold)
-            photos += repository.attachRemotePhotos(result.articleId, merged.imageUrls.ifEmpty { listing.imageUrls })
-            detailed++
+            val result = repository.upsertImported(merged, isSold, scan, null, createSold)
+            if (result.articleId != 0L) {
+                photos += repository.attachRemotePhotos(result.articleId, merged.imageUrls.ifEmpty { listing.imageUrls })
+                detailed++
+            }
         } else {
-            photos += repository.upsertImported(listing, isSold).let { repository.attachRemotePhotos(it.articleId, listing.imageUrls, max = 1) }
+            val res = repository.upsertImported(listing, isSold, scan, null, createSold)
+            if (res.articleId != 0L) photos += repository.attachRemotePhotos(res.articleId, listing.imageUrls, max = 1)
         }
         delay(2_000)
     }
     loadAndWait(web, session, profileUrl)
 
     return buildString {
-        append("${active.size - active.count { it.itemId in soldIds }} en vente et ${sold.size} vendue(s) trouvées ; ")
+        append("${active.size} en vente et ${soldList.size} vendue(s) trouvées ; ")
         append("$created nouvelle(s) fiche(s), $detailed complétée(s), $photos photo(s) téléchargée(s).")
-        if (!soldFilter) append(" Filtre « Vendus » introuvable : annonces vendues non importées.")
+        if (fix.merged + fix.removed > 0) append(" Doublons corrigés : ${fix.merged} fusionné(s), ${fix.removed} retiré(s).")
+        if (fix.markedSold > 0) append(" ${fix.markedSold} fiche(s) passée(s) en vendue, sans vente rattachée : voir Registre et contrôle.")
+        if (soldUnknown > 0) append(" $soldUnknown vente(s) sans fiche correspondante, non ajoutée(s) pour ne pas doubler tes ventes.")
+        if (!soldTabOk) append(" Onglet « Vendus » non lu : seules les cartes marquées « Vendu » ont été vues comme vendues.")
         if (all.size > MAX_DETAILED) append(" Détail limité aux $MAX_DETAILED premières : relance pour la suite.")
         append(" Complète le coût d'achat de chaque fiche pour avoir tes marges.")
     }

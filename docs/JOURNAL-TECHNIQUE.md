@@ -451,3 +451,21 @@ Journal reçu : 4 remplissages, 0 sans faute.
 - **Annonces absentes de l'application** : sur le dressing, les annonces inconnues sont listées avec
   « Importer ».
 - 404 sur une page d'annonce : noté pour information (annonce supprimée), sans compter comme incident.
+
+## 1.6.2 (19 novembre) : import du dressing sans doublons
+
+Constat : un import complet a créé 6 fiches « Aucun achat rattaché » qui doublaient des fiches existantes.
+- **Annonce republiée** : la fiche pointait vers l'ancienne annonce (supprimée) ; le rapprochement par titre
+  n'acceptait qu'une fiche sans lien → nouvelle fiche.
+- **Annonce vendue lue en ligne** : la soustraction « Vendus moins Actifs » retirait des ventes quand l'onglet
+  « Actifs » n'avait pas filtré (collier tennis 40 cm, gourmette croix).
+
+Corrections (`domain/ImportReconcile`, testé) :
+- une annonce va à la fiche qui porte son lien, sinon à une fiche du même titre dont le lien est vide ou absent
+  du dressing ; jamais à une fiche liée à une annonce encore visible (deux pièces identiques en ligne = deux
+  fiches) ; une annonce vendue ne va qu'à une fiche vendue ;
+- avant l'import, `reconcileImport` fusionne les doublons (le lien et les chiffres passent sur la fiche avec
+  achat), passe en « vendue » sans inventer de vente une fiche importée dont l'annonce est vendue, et retire
+  un doublon sans achat ni vente dont l'annonce n'existe plus (seulement si les deux onglets ont été lus) ;
+- badge « Vendu » lu sur chaque carte ; onglet « Vendus » ignoré s'il est identique à « Actifs » ;
+- une annonce vendue inconnue ne crée plus de vente sans date, sauf au tout premier import.

@@ -24,6 +24,8 @@ data class ImportedListing(
     val imageUrls: List<String> = emptyList(),
     /** Vrai si la page de l'annonce elle-même a été lue (fiche complète). */
     val detailed: Boolean = false,
+    /** Badge « Vendu » vu sur la carte du dressing. */
+    val soldBadge: Boolean = false,
 )
 
 /**
@@ -59,6 +61,7 @@ object PageImport {
                 favorites = count(o.optString("favorites")),
                 views = count(o.optString("views")),
                 imageUrls = listOf(o.optString("image")).filter(::isAllowedImage),
+                soldBadge = o.optBoolean("sold"),
             )
         }
         return result.values.toList()

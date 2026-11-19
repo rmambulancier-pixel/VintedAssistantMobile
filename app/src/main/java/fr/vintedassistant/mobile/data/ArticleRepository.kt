@@ -6,6 +6,7 @@ import fr.vintedassistant.mobile.data.importer.ExportCandidate
 import fr.vintedassistant.mobile.data.importer.ImportedListing
 import fr.vintedassistant.mobile.data.files.ImageDownloader
 import fr.vintedassistant.mobile.domain.VintedLinks
+import fr.vintedassistant.mobile.domain.ImportReconcile
 import fr.vintedassistant.mobile.domain.ListingTemplates
 import fr.vintedassistant.mobile.domain.RelativeDates
 import fr.vintedassistant.mobile.data.importer.VintedExportParser
@@ -298,18 +299,82 @@ class ArticleRepository(
      * Ne remplace jamais ce que l'utilisateur a saisi : seuls les champs vides sont complétés ;
      * le prix et les compteurs suivent Vinted. [sold] : annonce vue dans le filtre « Vendus ».
      */
-    suspend fun upsertImported(listing: ImportedListing, sold: Boolean): UpsertResult = db.withTransaction {
+    private suspend fun reconcileFiches(): List<ImportReconcile.Fiche> {
+        val withSale = saleDao.articleIdsWithSales().toSet()
+        return articleDao.getAll().map {
+            ImportReconcile.Fiche(
+                it.id, it.title, VintedLinks.itemId(it.vintedUrl), ArticleStatus.fromLabel(it.status),
+                hasPurchase = it.purchaseItemId != null, hasSale = it.id in withSale, costCents = it.costCents, createdAt = it.createdAt,
+            )
+        }
+    }
+
+    data class ReconcileResult(val merged: Int, val removed: Int, val markedSold: Int, val skipItemIds: Set<Long>)
+
+    /**
+     * Avant un import complet du dressing : fusionne les doublons (annonce republiée, annonce vendue lue en ligne),
+     * retire les doublons sans achat dont l'annonce n'existe plus. Ne touche jamais une fiche avec achat ou vente,
+     * sauf pour lui donner le lien de sa nouvelle annonce.
+     */
+    suspend fun reconcileImport(active: Set<Long>, sold: Set<Long>, reliable: Boolean): ReconcileResult {
+        val plan = ImportReconcile.plan(reconcileFiches(), active, sold, reliable)
+        if (plan.isEmpty) return ReconcileResult(0, 0, 0, emptySet())
+        val now = clock()
+        val skip = HashSet<Long>()
+        db.withTransaction {
+            plan.merges.forEach { (keepId, dropId) ->
+                val keep = articleDao.getById(keepId) ?: return@forEach
+                val drop = articleDao.getById(dropId) ?: return@forEach
+                val keepStatus = ArticleStatus.fromLabel(keep.status)
+                articleDao.update(
+                    keep.copy(
+                        vintedUrl = drop.vintedUrl,
+                        favoritesCount = drop.favoritesCount ?: keep.favoritesCount,
+                        viewsCount = drop.viewsCount ?: keep.viewsCount,
+                        priceCents = if (keepStatus.inStock) drop.priceCents.takeIf { it > 0 } ?: keep.priceCents else keep.priceCents,
+                        status = if (keepStatus == ArticleStatus.DRAFT) ArticleStatus.ONLINE.label else keep.status,
+                        firstPublishedAt = keep.firstPublishedAt ?: drop.firstPublishedAt,
+                        updatedAt = now,
+                    )
+                )
+                // Photos : la fiche gardée prend celles du doublon seulement si elle n'en a aucune.
+                if (photoDao.forArticle(keepId).isEmpty()) {
+                    photoDao.forArticle(dropId).forEach { ph -> photoDao.insert(ph.copy(id = 0, articleId = keepId)) }
+                    photoDao.deleteForArticle(dropId)
+                }
+            }
+            plan.markSold.forEach { id ->
+                val a = articleDao.getById(id) ?: return@forEach
+                articleDao.update(a.copy(status = ArticleStatus.SOLD.label, updatedAt = now))
+                VintedLinks.itemId(a.vintedUrl)?.let { skip += it }
+            }
+        }
+        // Retrait en dernier, hors transaction (fichiers photo) ; refusé de toute façon si une vente y est liée.
+        (plan.merges.map { it.second } + plan.drops).forEach { id -> runCatching { delete(id) } }
+        return ReconcileResult(plan.merges.size, plan.drops.size, plan.markSold.size, skip)
+    }
+
+    /**
+     * Crée ou met à jour la fiche d'une annonce lue sur Vinted. [scan] : identifiants vus dans le dressing (import
+     * complet) ; null pour une seule annonce. [taken] : fiches déjà attribuées pendant cet import. [createSold] :
+     * créer une fiche (et une vente sans date) pour une annonce vendue inconnue ; à éviter quand des ventes sont
+     * déjà enregistrées, pour ne pas les doubler.
+     */
+    suspend fun upsertImported(
+        listing: ImportedListing,
+        sold: Boolean,
+        scan: Set<Long>? = null,
+        taken: MutableSet<Long>? = null,
+        createSold: Boolean = true,
+    ): UpsertResult = db.withTransaction {
         val now = clock()
         val all = articleDao.getAll()
-        // Sinon, fiche encore sans lien Vinted portant exactement le même titre (remise en vente publiée
-        // sans « Lier cette page ») : la plus récente, pour ne pas créer de doublon.
-        val existing = all.firstOrNull { VintedLinks.itemId(it.vintedUrl) == listing.itemId }
-            ?: all.firstOrNull {
-                it.vintedUrl.isBlank() && ArticleStatus.fromLabel(it.status).inStock &&
-                    fr.vintedassistant.mobile.domain.StockLedger.normalize(it.title) == fr.vintedassistant.mobile.domain.StockLedger.normalize(listing.title)
-            }
+        val matchId = ImportReconcile.match(listing.itemId, listing.title, sold, reconcileFiches(), scan, taken.orEmpty())
+        val existing = matchId?.let { id -> all.firstOrNull { it.id == id } }
+        existing?.let { taken?.add(it.id) }
         val (cleanDescription, foundKeywords) = ListingTemplates.splitKeywords(listing.description)
         val added = RelativeDates.parse(listing.addedText, now)
+        if (existing == null && sold && !createSold) return@withTransaction UpsertResult(0, created = false)
         if (existing == null) {
             val id = articleDao.insert(
                 ArticleEntity(
@@ -333,6 +398,7 @@ class ArticleRepository(
                 )
             )
             if (sold) articleDao.getById(id)?.let { ensureImportedSale(it) }
+            taken?.add(id)
             return@withTransaction UpsertResult(id, created = true)
         }
         val status = ArticleStatus.fromLabel(existing.status)

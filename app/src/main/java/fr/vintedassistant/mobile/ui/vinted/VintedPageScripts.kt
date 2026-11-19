@@ -424,6 +424,8 @@ object VintedPageScripts {
               price:(text.match(/\d+[,.]\d{2}\s?€/)||[''])[0],
               favorites:(text.match(/(\d+)\s*favori/i)||['',''])[1],
               views:(text.match(/(\d+)\s*vue/i)||['',''])[1],
+              // Badge « Vendu » sur la carte (élément dont le texte est exactement « Vendu »).
+              sold:Array.from(card.querySelectorAll('*')).some(e=>e.children.length===0&&/^vendu$/i.test((e.textContent||'').trim())),
               image:img?(img.currentSrc||img.src||''):''});
           });
           return JSON.stringify(out);
