@@ -207,22 +207,37 @@ fun VintedWebScreen(
             } else a.photos
             session.pendingPhotos = photos.map { store.shareUri(it) }
             photosReady = photos.size
-            val picker = web.evalJs(VintedPageScripts.openPhotoPicker)
-            rec.put("photosExpected", photos.size).put("picker", picker)
-            // Photos reçues par le formulaire : le sélecteur les a prises (la liste d'attente s'est vidée),
-            // ou elles y étaient déjà (second « Remplir » sur le même formulaire).
-            for (i in 0 until 20) { if (session.pendingPhotos.isEmpty()) break; delay(400) }
-            val consumed = session.pendingPhotos.isEmpty()
-            if (picker == "already") { session.pendingPhotos = emptyList(); photosReady = 0 }
-            // Vignettes réellement affichées : le chargement des photos prend quelques secondes.
-            var shown = 0
-            for (i in 0 until 16) {
-                shown = web.evalJs(VintedPageScripts.photoCount)?.toIntOrNull() ?: 0
-                if (shown >= photos.size) break
-                delay(500)
+            val before = web.evalJs(VintedPageScripts.photoCount)?.toIntOrNull() ?: 0
+            rec.put("photosExpected", photos.size).put("photosBefore", before)
+            if (before >= photos.size) {
+                rec.put("photosShown", before).put("photosOk", true)
+                session.pendingPhotos = emptyList(); photosReady = 0
+            } else {
+                // Photos déposées directement dans le champ fichier (réduites à 1600 px, sans métadonnées).
+                val staged = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    photos.mapNotNull { name ->
+                        store.thumbnail(name, 1600)?.let { bmp ->
+                            val out = java.io.ByteArrayOutputStream()
+                            bmp.compress(Bitmap.CompressFormat.JPEG, 88, out)
+                            android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+                        }
+                    }
+                }
+                staged.forEachIndexed { i, b64 -> web.evalJs(VintedPageScripts.stagePhoto(b64, first = i == 0)) }
+                val dropped = if (staged.isEmpty()) "aucune photo lisible" else web.evalJs(VintedPageScripts.dropPhotos)
+                rec.put("photosDropped", dropped)
+                var shown = 0
+                for (i in 0 until 20) {
+                    shown = web.evalJs(VintedPageScripts.photoCount)?.toIntOrNull() ?: 0
+                    if (shown >= before + photos.size) break
+                    delay(500)
+                }
+                rec.put("photosShown", shown)
+                val ok = shown >= photos.size
+                rec.put("photosOk", ok)
+                if (ok) { session.pendingPhotos = emptyList(); photosReady = 0 }
+                // Sinon les photos restent prêtes : « Ajouter des photos » dans Vinted les reçoit directement.
             }
-            rec.put("photosConsumed", consumed).put("photosShown", shown)
-            rec.put("photosOk", shown >= photos.size || (shown == 0 && (consumed || picker == "already")))
         }
         val textRaw = web.evalJs(VintedPageScripts.fill(a.title, full, ""))
         rec.put("text", textRaw?.let { runCatching { org.json.JSONObject(it) }.getOrNull() } ?: org.json.JSONObject.NULL)
@@ -296,6 +311,9 @@ fun VintedWebScreen(
             rec.put("seconds", (System.currentTimeMillis() - started) / 1000)
             log(IncidentLog.Kind.FILL, ok, message, rec)
         }
+        // Un seul remplissage à la fois : deux « Remplir » en parallèle se refermaient mutuellement leurs menus
+        // (relevé du 19 novembre : 5 remplissages lancés dans la même minute).
+        if (filling) { status = "Remplissage déjà en cours, patiente quelques secondes."; return }
         filling = true
         try { fillInner(a, rotatePhotos, rec, ::finish) } finally { filling = false }
     }
@@ -561,12 +579,12 @@ fun VintedWebScreen(
                 ) { Text(if (currentUrl.contains("/items/")) "Importer cette annonce" else "Importer tout mon dressing") }
                 OutlinedButton(onClick = { session.webView?.loadUrl(SELL) }) { Text("Vendre") }
                 Button(
-                    enabled = article != null,
+                    enabled = article != null && !filling,
                     onClick = {
                         val a = article ?: return@Button
                         scope.launch { fillListing(a) }
                     },
-                ) { Text("Remplir") }
+                ) { Text(if (filling) "Remplissage…" else "Remplir") }
                 OutlinedButton(onClick = { reporting = true }) { Text("Signaler") }
                 OutlinedButton(onClick = { journal = true }) { Text("Journal") }
                 OutlinedButton(
@@ -900,7 +918,7 @@ private suspend fun runImport(
     var soldUnknown = 0
     all.forEach { (listing, isSold) ->
         if (listing.itemId in fix.skipItemIds) return@forEach
-        val res = repository.upsertImported(listing, isSold, scan, taken, createSold)
+        val res = repository.upsertImported(listing, isSold, scan, taken, createSold, soldIds)
         if (res.created) created++
         if (res.articleId == 0L) soldUnknown++
     }

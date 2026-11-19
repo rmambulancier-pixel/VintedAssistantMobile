@@ -479,3 +479,18 @@ Corrections (`domain/ImportReconcile`, testé) :
   catégories.
 - La fenêtre « Vinted demande » s'ouvrait sur un menu Couleur (bouton « Fait » hors écran). Elle ne reprend
   plus que les boîtes de confirmation : ni lignes à choisir, ni cases, ni champ, 4 boutons au plus.
+
+## 1.6.4 (19 novembre) : relevé de l'après-midi (13 remplissages, 0 sans faute)
+
+- **Remplissages en parallèle** : 5 lancés dans la même minute (15:16), 2 qui se chevauchent (17:08). Chacun
+  refermait les menus de l'autre (« liste des catégories vide », « menu non ouvert »). « Remplir » est
+  désactivé pendant un remplissage, et un second appel est refusé.
+- **Photos 0/13** : le clic sur « Ajouter des photos » ne déclenche pas le sélecteur (le navigateur exige un vrai
+  toucher). Les photos sont maintenant déposées directement dans le champ fichier (`DataTransfer`), en
+  JPEG 1600 px sans métadonnées. Si rien n'apparaît, elles restent prêtes pour « Ajouter des photos ».
+- **Prix « NaN € »** : le champ est vidé avant la saisie.
+- **Vente en double** : bracelet ange argenté vendu le 13 via l'annonce de la fiche 58, vente rattachée à la
+  fiche 3 ; l'import du 19 a vu l'annonce vendue et créé une seconde vente « À expédier ». Désormais, avant de
+  créer une vente, l'import cherche une vente du même titre (45 jours) sur une autre fiche dont l'annonce n'est
+  pas vendue, et la déplace (`misattributedSale`). Correction des données : fichier de corrections
+  (`moveSales`, `deleteSales`, nouveaux types, vérifiés par titre et prix, appliqués après confirmation).

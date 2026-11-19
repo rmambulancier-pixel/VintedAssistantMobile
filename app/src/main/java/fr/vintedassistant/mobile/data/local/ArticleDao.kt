@@ -88,6 +88,9 @@ interface SaleDao {
     @Update
     suspend fun update(sale: SaleEntity): Int
 
+    @Query("DELETE FROM sales WHERE id = :id")
+    suspend fun deleteById(id: Long): Int
+
     @Query("SELECT DISTINCT article_id FROM sales WHERE article_id IS NOT NULL")
     suspend fun articleIdsWithSales(): List<Long>
 

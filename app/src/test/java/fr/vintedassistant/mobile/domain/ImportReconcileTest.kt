@@ -68,3 +68,28 @@ class ImportReconcileTest {
         assertNull(ImportReconcile.match(200, trefle, true, fiches, setOf(200), emptySet()))
     }
 }
+
+class MisattributedSaleTest {
+    private val ange = "Bracelet Ange Gardien Acier Inoxydable 304 Argenté Ajustable"
+    private val day = 24L * 3600 * 1000
+    private val now = 100 * day
+    private fun f(id: Long, itemId: Long?, status: ArticleStatus) = Fiche(id, ange, itemId, status, true, false, 61, id)
+
+    @Test fun `vente rattachee a l'autre fiche du meme bijou`() {
+        val fiches = listOf(f(3, 10576190375, ArticleStatus.SOLD), f(58, 10741442704, ArticleStatus.ONLINE))
+        val sales = listOf(ImportReconcile.SaleRef(35, 3, ange, now - 6 * day))
+        assertEquals(35L, ImportReconcile.misattributedSale(fiches[1], sales, fiches, soldScan = setOf(10741442704), now = now))
+    }
+
+    @Test fun `les deux annonces vendues, deux ventes distinctes`() {
+        val fiches = listOf(f(3, 10576190375, ArticleStatus.SOLD), f(58, 10741442704, ArticleStatus.ONLINE))
+        val sales = listOf(ImportReconcile.SaleRef(35, 3, ange, now - 6 * day))
+        assertNull(ImportReconcile.misattributedSale(fiches[1], sales, fiches, setOf(10741442704, 10576190375), now))
+    }
+
+    @Test fun `vente trop ancienne, ignoree`() {
+        val fiches = listOf(f(3, null, ArticleStatus.SOLD), f(58, 10741442704, ArticleStatus.ONLINE))
+        val sales = listOf(ImportReconcile.SaleRef(35, 3, ange, now - 60 * day))
+        assertNull(ImportReconcile.misattributedSale(fiches[1], sales, fiches, setOf(10741442704), now))
+    }
+}

@@ -96,6 +96,41 @@ class Corrections(
                 steps += step
             }
         }
+        // Ventes à déplacer vers la bonne fiche (vente rattachée à une autre fiche du même bijou).
+        root.optJSONArray("moveSales")?.let { list ->
+            for (k in 0 until list.length()) {
+                val e = list.getJSONObject(k)
+                val saleId = e.getLong("saleId")
+                val to = e.getLong("toArticleId")
+                val sale = articles.getSale(saleId)
+                val target = articles.getArticle(to)
+                val label = "Vente du ${e.optString("date")} « ${e.optString("title").take(50)} » → fiche #$to"
+                steps += when {
+                    sale == null -> Step(label, "vente introuvable") {}
+                    !titleMatches(sale.title, e.optString("title")) -> Step(label, "la vente s'appelle « ${sale.title.take(50)} »") {}
+                    sale.articleId == to -> Step(label, "déjà fait") {}
+                    target == null -> Step(label, "fiche #$to introuvable") {}
+                    !titleMatches(target.title, e.optString("toTitle")) -> Step(label, "la fiche #$to s'appelle « ${target.title.take(50)} »") {}
+                    else -> Step(label, null) { articles.moveSale(saleId, to) }
+                }
+            }
+        }
+
+        // Ventes en double à supprimer (vérifiées par titre et prix).
+        root.optJSONArray("deleteSales")?.let { list ->
+            for (k in 0 until list.length()) {
+                val e = list.getJSONObject(k)
+                val saleId = e.getLong("id")
+                val sale = articles.getSale(saleId)
+                val label = "Supprimer la vente en double « ${e.optString("title").take(50)} » (${e.optString("reason")})"
+                steps += when {
+                    sale == null -> Step(label, "déjà supprimée") {}
+                    !titleMatches(sale.title, e.optString("title")) -> Step(label, "la vente s'appelle « ${sale.title.take(50)} »") {}
+                    e.has("priceCents") && sale.salePriceCents != e.getLong("priceCents") -> Step(label, "prix différent (${sale.salePriceCents / 100.0} €)") {}
+                    else -> Step(label, null) { articles.deleteSale(saleId) }
+                }
+            }
+        }
         return steps
     }
 

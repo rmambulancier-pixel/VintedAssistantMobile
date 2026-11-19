@@ -99,4 +99,23 @@ object ImportReconcile {
             },
         )?.id
     }
+
+    data class SaleRef(val id: Long, val articleId: Long?, val title: String, val soldAt: Long)
+
+    /**
+     * Annonce vendue, fiche encore en stock et sans vente : la vente est peut-être déjà enregistrée, mais sur une
+     * autre fiche du même bijou (cas du 19 novembre : bracelet ange argenté vendu le 13 via l'annonce de la fiche 58,
+     * vente rattachée à la fiche 3). On la retrouve : même titre, 45 jours au plus, sur une fiche dont la propre
+     * annonce n'est pas vendue. Sinon null, et c'est bien une nouvelle vente.
+     */
+    fun misattributedSale(fiche: Fiche, sales: List<SaleRef>, fiches: List<Fiche>, soldScan: Set<Long>, now: Long): Long? {
+        val byId = fiches.associateBy { it.id }
+        return sales.filter { s ->
+            val owner = s.articleId?.let { byId[it] } ?: return@filter false
+            owner.id != fiche.id && StockLedger.normalize(s.title) == fiche.key &&
+                now - s.soldAt in 0..45L * 24 * 3600 * 1000 &&
+                (owner.itemId == null || owner.itemId !in soldScan) &&
+                sales.count { it.articleId == owner.id } == 1
+        }.maxByOrNull { it.soldAt }?.id
+    }
 }

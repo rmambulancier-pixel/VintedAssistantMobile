@@ -318,7 +318,10 @@ object VintedPageScripts {
         (function(v){
           const e=document.getElementById('price')||document.querySelector('[data-testid="price-input--input"]');
           if(!e)return 'absent';
+          // Champ vidé d'abord : un « NaN € » laissé par un essai précédent faussait la saisie suivante.
+          const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
           e.focus();
+          setter.call(e,'');e.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'deleteContentBackward'}));
           // Saisie « comme au clavier » : React enregistre la valeur (la simple affectation pouvait rester affichée
           // sans être prise en compte, d'où « Le champ prix doit être supérieur ou égal à 1.0 »).
           e.select();
@@ -364,6 +367,31 @@ object VintedPageScripts {
           if(b){b.click();return 'button';}
           if(i){i.click();return 'input';}
           return 'none';
+        })();
+    """.trimIndent()
+
+    /** Ajoute une photo (JPEG en base64) à la liste à déposer dans le formulaire. */
+    fun stagePhoto(base64: String, first: Boolean): String =
+        (if (first) "window.__vbPhotos=[];" else "") + "window.__vbPhotos.push(" + JSONObject.quote(base64) + ");String(window.__vbPhotos.length);"
+
+    /**
+     * Dépose les photos préparées dans le champ fichier du formulaire, comme un glisser-déposer : le navigateur
+     * n'ouvre pas le sélecteur de fichiers sans un vrai toucher dans la page (relevé du 19 novembre : 0 photo sur
+     * 13 remplissages). Renvoie le nombre de photos déposées, ou « absent ».
+     */
+    val dropPhotos: String = """
+        (function(){
+          const list=window.__vbPhotos||[];if(!list.length)return 'vide';
+          const inp=Array.from(document.querySelectorAll('input[type="file"]')).find(i=>!i.disabled&&(!i.accept||/image/.test(i.accept)));
+          if(!inp)return 'absent';
+          const dt=new DataTransfer();
+          list.forEach((b,i)=>{const bin=atob(b);const a=new Uint8Array(bin.length);for(let k=0;k<bin.length;k++)a[k]=bin.charCodeAt(k);
+            dt.items.add(new File([a],'photo-'+(i+1)+'.jpg',{type:'image/jpeg',lastModified:Date.now()}));});
+          inp.files=dt.files;
+          inp.dispatchEvent(new Event('input',{bubbles:true}));
+          inp.dispatchEvent(new Event('change',{bubbles:true}));
+          window.__vbPhotos=[];
+          return String(dt.files.length);
         })();
     """.trimIndent()
 

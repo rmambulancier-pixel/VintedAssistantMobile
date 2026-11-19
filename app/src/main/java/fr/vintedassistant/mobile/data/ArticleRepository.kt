@@ -309,6 +309,25 @@ class ArticleRepository(
         }
     }
 
+    /** Déplace une vente vers une autre fiche (qui passe « Vendu ») ; l'ancienne fiche, sans autre vente, revient en brouillon. */
+    private suspend fun moveSaleInTransaction(saleId: Long, toArticleId: Long, now: Long) {
+        val sale = saleDao.getById(saleId) ?: return
+        val target = articleDao.getById(toArticleId) ?: return
+        val former = sale.articleId
+        saleDao.update(sale.copy(articleId = toArticleId, costCents = target.costCents.takeIf { it > 0 } ?: sale.costCents))
+        articleDao.update(target.copy(status = ArticleStatus.SOLD.label, updatedAt = now))
+        if (former != null && former != toArticleId && saleDao.forArticle(former).isEmpty()) {
+            articleDao.getById(former)?.let { articleDao.update(it.copy(status = ArticleStatus.DRAFT.label, updatedAt = now)) }
+        }
+    }
+
+    suspend fun moveSale(saleId: Long, toArticleId: Long) = db.withTransaction { moveSaleInTransaction(saleId, toArticleId, clock()) }
+
+    /** Supprime une vente (doublon). La fiche reste « Vendu » si une autre vente la porte encore. */
+    suspend fun deleteSale(saleId: Long) = db.withTransaction { saleDao.deleteById(saleId) }
+
+    suspend fun getSale(saleId: Long) = saleDao.getById(saleId)
+
     data class ReconcileResult(val merged: Int, val removed: Int, val markedSold: Int, val skipItemIds: Set<Long>)
 
     /**
@@ -366,6 +385,7 @@ class ArticleRepository(
         scan: Set<Long>? = null,
         taken: MutableSet<Long>? = null,
         createSold: Boolean = true,
+        soldScan: Set<Long>? = null,
     ): UpsertResult = db.withTransaction {
         val now = clock()
         val all = articleDao.getAll()
@@ -431,7 +451,15 @@ class ArticleRepository(
             eventDao.insert(ListingEventEntity(articleId = existing.id, type = ListingEventEntity.PRICE_CHANGED, at = now, priceCents = newPrice))
         }
         if (newStatus == ArticleStatus.SOLD) {
-            if (status.inStock && saleDao.forArticle(existing.id).isEmpty()) {
+            // Vente déjà enregistrée, mais sur une autre fiche du même bijou : on la déplace au lieu d'en créer une.
+            val misplaced = if (status.inStock && soldScan != null && saleDao.forArticle(existing.id).isEmpty()) {
+                val fiches = reconcileFiches()
+                val sales = saleDao.getAll().map { ImportReconcile.SaleRef(it.id, it.articleId, it.title, it.soldAt) }
+                fiches.firstOrNull { it.id == existing.id }?.let { ImportReconcile.misattributedSale(it, sales, fiches, soldScan, now) }
+            } else null
+            if (misplaced != null) {
+                moveSaleInTransaction(misplaced, existing.id, now)
+            } else if (status.inStock && saleDao.forArticle(existing.id).isEmpty()) {
                 // Fiche encore en vente dans l'application, vendue sur Vinted : vente récente, colis à envoyer.
                 // Date du jour (au plus tôt) ; prix affiché, l'éventuelle offre acceptée n'étant pas visible ici.
                 val sold = articleDao.getById(existing.id)!!
