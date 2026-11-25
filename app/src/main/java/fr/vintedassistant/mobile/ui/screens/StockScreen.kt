@@ -82,6 +82,8 @@ class StockActions(
     val relaunch: (templateId: Long, itemId: Long?) -> Unit,
     val draftFromPurchase: (itemId: Long) -> Unit,
     val link: (article: Article, lot: StockLot) -> Unit,
+    /** La pièce du lot est déjà prise par [holder] : la fiche la récupère ; [holder] est supprimée ou détachée. */
+    val takeOver: (article: Article, lot: StockLot, holder: Article, deleteHolder: Boolean) -> Unit = { _, _, _, _ -> },
     /** La commande [orderId] est arrivée : ses pièces deviennent vendables. */
     val markReceived: (orderId: Long) -> Unit,
     /** Mise en vente express de toutes les pièces reçues sans fiche. */
@@ -108,6 +110,7 @@ fun StockScreen(
     var query by rememberSaveable { mutableStateOf("") }
     var linkProduct by remember { mutableStateOf<StockProduct?>(null) }
     var linkArticle by remember { mutableStateOf<Article?>(null) }
+    var takeOver by remember { mutableStateOf<Triple<Article, StockLot, Article>?>(null) }
     var copyFor by remember { mutableStateOf<StockProduct?>(null) }
     var blindRelaunch by remember { mutableStateOf<Article?>(null) }
     val dateFormat = remember { DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.FRANCE) }
@@ -136,6 +139,36 @@ fun StockScreen(
             dateFormat = dateFormat,
             onDismiss = { linkArticle = null },
             onPick = { lot -> linkArticle = null; actions.link(article, lot) },
+            onTakeOver = { lot, holder -> linkArticle = null; takeOver = Triple(article, lot, holder) },
+        )
+    }
+    takeOver?.let { (article, lot, holder) ->
+        // Brouillon sans annonce ni vente : sans doute un doublon, on propose de le supprimer.
+        val plainDraft = holder.status == fr.vintedassistant.mobile.domain.ArticleStatus.DRAFT && holder.vintedUrl.isBlank() &&
+            sales.none { it.articleId == holder.id }
+        AlertDialog(
+            onDismissRequest = { takeOver = null },
+            title = { Text("Récupérer cette pièce ?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("La pièce est rattachée à « ${holder.title} » (${holder.status.label.lowercase()}).", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        if (plainDraft) "Ce brouillon n'a ni annonce ni vente : c'est sans doute un doublon de « ${article.title.take(60)} »."
+                        else "Cette fiche a une annonce ou une vente : elle passera dans « Sans achat », à rattacher ailleurs.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (plainDraft) {
+                        Button(onClick = { takeOver = null; actions.takeOver(article, lot, holder, true) }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Récupérer et supprimer le brouillon")
+                        }
+                    }
+                    OutlinedButton(onClick = { takeOver = null; actions.takeOver(article, lot, holder, false) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (plainDraft) "Récupérer, garder le brouillon sans achat" else "Récupérer la pièce")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { takeOver = null }) { Text("Annuler") } },
         )
     }
     blindRelaunch?.let { a ->
@@ -595,25 +628,45 @@ private fun LotPickerDialog(
     dateFormat: DateFormat,
     onDismiss: () -> Unit,
     onPick: (StockLot) -> Unit,
+    onTakeOver: (StockLot, Article) -> Unit = { _, _ -> },
 ) {
+    // Lignes reçues avec une pièce libre d'abord ; puis, plus bas, les lignes dont toutes les pièces ont déjà une
+    // fiche (avec le nom de cette fiche) : le 25 novembre, un bracelet « introuvable » était sur une ligne prise
+    // par un brouillon en double.
+    data class Entry(val product: StockProduct, val lot: StockLot, val holder: Article?)
     val entries = remember(article, products) {
-        products.flatMap { p -> p.lots.filter { it.received && it.remaining > 0 && it.itemId != article.purchaseItemId }.map { p to it } }
-            .sortedWith(compareByDescending<Pair<StockProduct, StockLot>> { StockLedger.similarity(article.title, it.first.name) }.thenBy { it.second.orderedAt })
+        val sim = { p: StockProduct -> StockLedger.similarity(article.title, p.name) }
+        val free = products.flatMap { p -> p.lots.filter { it.received && it.remaining > 0 && it.itemId != article.purchaseItemId }.map { Entry(p, it, null) } }
+            .sortedWith(compareByDescending<Entry> { sim(it.product) }.thenBy { it.lot.orderedAt })
+        val taken = products.flatMap { p ->
+            p.lots.filter { it.received && it.remaining == 0 && it.itemId != article.purchaseItemId }.mapNotNull { lot ->
+                // La fiche qui occupe la pièce : de préférence une fiche encore en stock (brouillon d'abord).
+                val holders = p.articles.filter { it.purchaseItemId == lot.itemId && it.id != article.id }
+                val holder = holders.filter { it.status.inStock }.minByOrNull { if (it.status == fr.vintedassistant.mobile.domain.ArticleStatus.DRAFT) 0 else 1 }
+                holder?.let { Entry(p, lot, it) }
+            }
+        }.sortedWith(
+            // Pièce tenue par un brouillon d'abord (doublon probable), puis par ressemblance du nom.
+            compareBy<Entry> { if (it.holder?.status == fr.vintedassistant.mobile.domain.ArticleStatus.DRAFT) 0 else 1 }
+                .thenByDescending { sim(it.product) },
+        ).take(20)
+        free + taken
     }
     PickerDialog(
         title = "De quel achat vient cette fiche ?",
         header = article.title,
         headerImage = article.photos.firstOrNull(),
-        empty = "Aucune pièce libre dans tes achats reçus. Importe la commande correspondante dans « Achats fournisseur ».",
-        entries = entries.map { (p, lot) ->
+        empty = "Aucune ligne d'achat ne correspond. Importe la commande correspondante dans « Achats fournisseur ».",
+        entries = entries.map { e ->
             Triple(
-                p.imageFile,
-                variantFirst(p.name),
-                "Commande du ${dateFormat.format(Date(lot.orderedAt))} • ${lot.remaining} libre(s) • revient ${Money.formatEuros(lot.landedUnitCents)}",
+                e.product.imageFile,
+                variantFirst(e.product.name) + (e.lot.sku.takeIf { it.isNotBlank() }?.let { " • $it" } ?: ""),
+                if (e.holder == null) "Commande du ${dateFormat.format(Date(e.lot.orderedAt))} • ${e.lot.remaining} libre(s) • revient ${Money.formatEuros(e.lot.landedUnitCents)}"
+                else "Déjà prise par « ${e.holder.title.take(45)} » (${e.holder.status.label.lowercase()}) • toucher pour la récupérer",
             )
         },
         onDismiss = onDismiss,
-        onPick = { i -> onPick(entries[i].second) },
+        onPick = { i -> entries[i].let { e -> if (e.holder == null) onPick(e.lot) else onTakeOver(e.lot, e.holder) } },
     )
 }
 

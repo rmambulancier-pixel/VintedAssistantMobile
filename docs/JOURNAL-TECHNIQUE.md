@@ -505,3 +505,14 @@ Corrections (`domain/ImportReconcile`, testé) :
 - Mise à jour : 2 s après tout changement (fiches, ventes, achats, réglages) et toutes les 30 minutes.
 - Toucher : ouvre l'application, sur l'onglet Ventes s'il y a un colis à déposer.
 - Contenu calculé par `domain/WidgetSummary` (testé).
+
+## 1.7.1 (25 novembre) : « Rattacher un achat » montre aussi les pièces déjà prises
+
+Cas : bracelet trèfle rose rubis argenté (fiche importée de Vinted, sans achat). Sa ligne d'achat existe
+(NHFR608202311892, NH53003568 « Argent + Rose »), mais sa seule pièce était prise par le brouillon
+« Bracelet trèfle strass rose poudré et or » créé le 19 novembre (titre copié du modèle doré). Le sélecteur
+n'affichait que les lignes avec une pièce libre : la ligne était invisible.
+- Le sélecteur liste ensuite les lignes reçues sans pièce libre, avec la fiche qui occupe la pièce (brouillons
+  d'abord) et le code produit.
+- Toucher une ligne prise : « Récupérer et supprimer le brouillon » (brouillon sans annonce ni vente) ou
+  « Récupérer » (l'autre fiche passe dans « Sans achat »).

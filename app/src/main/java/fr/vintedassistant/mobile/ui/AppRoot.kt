@@ -356,6 +356,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                         relaunch = { templateId, itemId -> vm.relaunch(templateId, itemId) { created = it } },
                         draftFromPurchase = { itemId -> vm.draftFromPurchase(itemId, ::openEditor) },
                         link = { a, lot -> vm.linkToPurchase(a.id, lot.itemId, a.title, lot.landedUnitCents) },
+                        takeOver = { a, lot, holder, delete -> vm.takeOverPurchase(a.id, lot.itemId, a.title, holder.id, holder.title, delete) },
                         markReceived = { orderId -> vm.setOrderReceived(orderId, true) },
                         inventory = { overlayIndex = Overlay.INVENTORY.ordinal },
                         register = { overlayIndex = Overlay.REGISTER.ordinal },

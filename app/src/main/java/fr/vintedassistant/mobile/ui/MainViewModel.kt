@@ -303,6 +303,18 @@ class MainViewModel(
 
     fun unlinkPurchase(articleId: Long) = launchSafely("Détachement impossible.") { purchases.unlink(articleId) }
 
+    /**
+     * La pièce d'un achat est prise par une autre fiche (souvent un brouillon en double) : [articleId] la récupère.
+     * L'autre fiche est supprimée si [deleteHolder] (brouillon sans annonce ni vente), sinon elle passe « sans achat ».
+     */
+    fun takeOverPurchase(articleId: Long, itemId: Long, title: String, holderId: Long, holderTitle: String, deleteHolder: Boolean) =
+        launchSafely("Rattachement impossible.") {
+            if (deleteHolder) repository.delete(holderId) else purchases.unlink(holderId)
+            purchases.link(articleId, itemId)
+            _message.value = "« ${title.take(50)} » rattaché. « ${holderTitle.take(40)} » " +
+                (if (deleteHolder) "supprimé (doublon)." else "passe dans « Sans achat ».")
+        }
+
     private fun launchSafely(errorMessage: String, block: suspend () -> Unit) {
         viewModelScope.launch {
             try {
