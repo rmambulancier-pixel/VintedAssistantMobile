@@ -60,11 +60,14 @@ object ExpressListing {
     }
 
     /** Mots de coloris d'un titre, avec leurs qualificatifs courants (« rose poudré », « vert émeraude »). */
-    private val TONE = java.util.regex.Pattern.compile(
-        """\b(dor[ée]e?s?|or|argent[ée]?e?s?|rose|vert|bleu|noir|blanc|rouge|violet)(\s+(poudr[ée]e?|[ée]meraude|onyx|rubis|saphir|nuit|fonc[ée]e?|clair|gold|ros[ée]e?))?\b""",
-        // Unicode : « é » compte comme une lettre pour \b (sinon « rose poudré » n'est pas reconnu en bloc).
-        java.util.regex.Pattern.CASE_INSENSITIVE or java.util.regex.Pattern.UNICODE_CASE or java.util.regex.Pattern.UNICODE_CHARACTER_CLASS,
-    ).toRegex()
+    // Bornes de mot écrites à la main : « é » doit compter comme une lettre, et l'option Unicode de Java
+    // (UNICODE_CHARACTER_CLASS) n'existe pas sur Android (plantage relevé par les tests sur émulateur).
+    private const val L = """(?<![\p{L}\p{N}])"""
+    private const val R = """(?![\p{L}\p{N}])"""
+    private val TONE = Regex(
+        L + """(dor[ée]e?s?|or|argent[ée]?e?s?|rose|vert|bleu|noir|blanc|rouge|violet)(\s+(poudr[ée]e?|[ée]meraude|onyx|rubis|saphir|nuit|fonc[ée]e?|clair|gold|ros[ée]e?))?""" + R,
+        RegexOption.IGNORE_CASE,
+    )
 
     /** Coloris d'une ligne fournisseur en mots de titre : « Argent + Rose » donne « argenté et rose ». */
     fun toneWords(variant: String): String {
@@ -100,7 +103,7 @@ object ExpressListing {
         val end = hits.last().range.last + 1
         val block = title.substring(start, end)
         // On ne remplace qu'un bloc compact (coloris et liaisons) ; sinon chaque mot isolément.
-        val compact = block.replace(TONE, "").replace(java.util.regex.Pattern.compile("""\b(et|&)\b""", java.util.regex.Pattern.UNICODE_CHARACTER_CLASS).toRegex(), "").isBlank()
+        val compact = block.replace(TONE, "").replace(Regex(L + """(et|&)""" + R), "").isBlank()
         val out = if (compact) title.substring(0, start) + words + title.substring(end)
         else {
             var first = true

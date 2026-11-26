@@ -559,3 +559,6 @@ mais 9 annonces en ligne pour 43 pièces hors vitrine. Le frein est le volume pu
   la ligne achetée (`ExpressListing.retitle`, regex Unicode pour « poudré ») et la couleur Vinted assortie.
 - **Saison des cadeaux** (15 novembre – 24 décembre) : « Idée cadeau pour Noël » en tête de description et
   mots-clés de Noël, ajoutés au remplissage dans Vinted intégré.
+- Correctif avant livraison : `Pattern.UNICODE_CHARACTER_CLASS` n'existe pas sur Android (plantage au chargement
+  d'`ExpressListing`, relevé par les tests sur émulateur). Bornes de mot écrites avec `(?<![\p{L}\p{N}])` et
+  `(?![\p{L}\p{N}])`, et test sur émulateur ajouté pour le titre au bon coloris.

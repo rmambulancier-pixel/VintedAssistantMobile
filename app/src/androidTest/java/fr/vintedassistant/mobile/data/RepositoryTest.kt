@@ -764,4 +764,14 @@ class RepositoryTest {
         repo.deleteSale(saleId)
         assertTrue(repo.sales.first().isEmpty())
     }
+
+    /** Le moteur d'expressions régulières d'Android n'est pas celui de Java : le titre au bon coloris y est vérifié. */
+    @Test
+    fun retitleWorksWithAndroidRegex() {
+        val line = "Bracelet femme luxueux motif Cœur porte-bonheur (Argent + Rose)"
+        assertEquals(
+            "Bracelet trèfle strass argenté et rose 17 cm style joaillerie vintage chic",
+            fr.vintedassistant.mobile.domain.ExpressListing.retitle("Bracelet trèfle strass rose poudré et or 17 cm style joaillerie vintage chic", line),
+        )
+    }
 }
