@@ -58,6 +58,7 @@ fun DashboardScreen(
     board: fr.vintedassistant.mobile.domain.StockBoard? = null,
     stock: fr.vintedassistant.mobile.domain.StockOverview? = null,
     onOpenStock: () -> Unit = {},
+    onOpenGrowth: () -> Unit = {},
 ) {
     var openFinding by remember { mutableStateOf<String?>(null) }
     val now = System.currentTimeMillis()
@@ -112,6 +113,20 @@ fun DashboardScreen(
             }
         }
         item { HeroCard(stats, monthlyGoalEuros, sales, now) }
+        // Gagner plus : l'argent qui dort hors vitrine, en une ligne, et l'accès aux quatre leviers.
+        stock?.let { st ->
+            val show = fr.vintedassistant.mobile.domain.Growth.showcase(st, emptyList(), sales, now)
+            val waiting = st.notListed + st.inTransit + (board?.drafts ?: 0)
+            item {
+                androidx.compose.material3.Button(onClick = onOpenGrowth, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        if (waiting > 0) "Gagner plus : $waiting pièce(s) hors vitrine ≈ " +
+                            fr.vintedassistant.mobile.domain.Money.formatEuros(waiting * show.medianPriceCents)
+                        else "Gagner plus : prix, rachat, relances",
+                    )
+                }
+            }
+        }
         item {
             val daily = remember(sales, now / 3_600_000) { Charts.daily(sales, 30, now) }
             val monthly = remember(sales, contributionRateBp, now / 3_600_000) { Charts.monthly(sales, contributionRateBp, 6, now) }

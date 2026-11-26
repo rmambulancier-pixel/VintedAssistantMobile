@@ -541,3 +541,21 @@ n'affichait que les lignes avec une pièce libre : la ligne était invisible.
 - Changements d'Android 17 vérifiés pour cette appli : limite mémoire stricte des RemoteViews (widget : texte
   seul, très léger), transparence des certificats par défaut (sans effet sur Vinted et Nihao), champs
   `static final` non modifiables (non utilisé). Aucun changement de code nécessaire.
+
+## 1.10.0 (26 novembre) : « Gagner plus »
+
+Constat chiffré (sauvegarde du 19 novembre) : 85 % de marge, vente en 2 jours (médiane) une fois en ligne,
+mais 9 annonces en ligne pour 43 pièces hors vitrine. Le frein est le volume publié, pas le prix.
+- **Écran « Gagner plus »** (accès depuis l'accueil, `domain/Growth`, testé) :
+  1. vitrine : pièces hors ligne et leur valeur, « Préparer les pièces reçues », « Publier les brouillons
+     prêts en série » (photos + prix) ;
+  2. prix : modèle vendu au moins 3 fois en 3 jours ou moins (médiane), sans pièce qui stagne → +1 € (10 %
+     au-delà de 10 €), appliqué aux brouillons en un toucher (historique des prix noté) ;
+  3. rachat : rythme des 60 derniers jours × (21 jours de délai + 30 jours de vente) − pièces disponibles,
+     10 au plus par ligne, budget et bénéfice attendu ;
+  4. relances : message d'offre à copier pour les favoris (−15 %, rappel des lots), photo principale changée
+     (`rotateMainPhoto`).
+- **Titres au bon coloris** : une fiche copiée d'un modèle d'une autre couleur reçoit les mots de coloris de
+  la ligne achetée (`ExpressListing.retitle`, regex Unicode pour « poudré ») et la couleur Vinted assortie.
+- **Saison des cadeaux** (15 novembre – 24 décembre) : « Idée cadeau pour Noël » en tête de description et
+  mots-clés de Noël, ajoutés au remplissage dans Vinted intégré.

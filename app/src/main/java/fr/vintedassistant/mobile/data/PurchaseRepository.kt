@@ -408,7 +408,17 @@ class PurchaseRepository(
             if (!item.sameVariant) {
                 photoDao.forArticle(id).forEach { photoStore?.delete(it.fileName) }
                 photoDao.deleteForArticle(id)
-                articleDao.getById(id)?.let { articleDao.update(it.copy(color = "", updatedAt = clock())) }
+                // Titre et couleur ramenés au coloris réellement acheté (et non celui du modèle copié).
+                articleDao.getById(id)?.let {
+                    val variant = fr.vintedassistant.mobile.domain.ExpressListing.variant(item.productName)
+                    articleDao.update(
+                        it.copy(
+                            title = fr.vintedassistant.mobile.domain.ExpressListing.retitle(it.title, item.productName),
+                            color = if (variant.isBlank()) "" else fr.vintedassistant.mobile.domain.ExpressListing.colorField(variant),
+                            updatedAt = clock(),
+                        ),
+                    )
+                }
             }
             return id
         }

@@ -174,8 +174,10 @@ fun VintedWebScreen(
 
     suspend fun fillInner(a: Article, rotatePhotos: Boolean, rec: org.json.JSONObject, finish: (Boolean, String) -> Unit) {
         val draft = ListingTemplates.draft(a)
-        val description = a.description.ifBlank { draft.description }
-        val tags = a.keywords.ifBlank { draft.keywords }
+        // Saison des cadeaux (15 novembre – 24 décembre) : mention « idée cadeau » et mots-clés de Noël.
+        val today = java.time.LocalDate.now()
+        val description = fr.vintedassistant.mobile.domain.Growth.seasonal(a.description.ifBlank { draft.description }, today)
+        val tags = fr.vintedassistant.mobile.domain.Growth.seasonalTags(a.keywords.ifBlank { draft.keywords }, today)
         val full = if (tags.isBlank() || description.contains(tags)) description else "$description\n\n$tags"
         val web = session.webView ?: return
 

@@ -122,6 +122,26 @@ class ArticleRepository(
         }
     }
 
+    /** Nouveau prix (conseil de prix) : noté dans l'historique des prix. */
+    suspend fun setPrice(id: Long, priceCents: Long) = db.withTransaction {
+        val a = articleDao.getById(id) ?: return@withTransaction
+        if (a.priceCents == priceCents) return@withTransaction
+        val now = clock()
+        articleDao.update(a.copy(priceCents = priceCents, floorPriceCents = a.floorPriceCents?.takeIf { it <= priceCents }, updatedAt = now))
+        eventDao.insert(ListingEventEntity(articleId = id, type = ListingEventEntity.PRICE_CHANGED, at = now, priceCents = priceCents))
+    }
+
+    /** Photo principale changée : la première passe en dernier (annonce qui stagne, nouvelle vignette). */
+    suspend fun rotateMainPhoto(id: Long): Boolean = db.withTransaction {
+        val photos = photoDao.forArticle(id).sortedBy { it.position }
+        if (photos.size < 2) return@withTransaction false
+        val order = photos.drop(1) + photos.first()
+        photoDao.deleteForArticle(id)
+        order.forEachIndexed { i, ph -> photoDao.insert(ph.copy(id = 0, position = i)) }
+        articleDao.getById(id)?.let { articleDao.update(it.copy(updatedAt = clock())) }
+        true
+    }
+
     suspend fun setStatus(id: Long, status: ArticleStatus) {
         val current = articleDao.getById(id) ?: return
         articleDao.update(current.copy(status = status.label, updatedAt = clock()))

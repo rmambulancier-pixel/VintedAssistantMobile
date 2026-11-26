@@ -74,7 +74,7 @@ enum class Tab(val label: String, val icon: ImageVector) {
 private enum class Overlay(val title: String) {
     NONE(""), SETTINGS("Réglages"), ACTIVITY("Activité Vinted"), VINTED("Vinted intégré (bêta)"),
     PURCHASES("Achats fournisseur"), SUPPLIER("Nihaojewelry"), EXPRESS("Mise en vente express"), INVENTORY("Inventaire"),
-    REGISTER("Registre du stock"), SHEET("Fiche stock"),
+    REGISTER("Registre du stock"), SHEET("Fiche stock"), GROWTH("Gagner plus"),
 }
 
 /**
@@ -319,6 +319,18 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                 onPublish = { ids -> vintedQueue = ArrayList(ids); vintedArticle = ids.firstOrNull(); overlayIndex = Overlay.VINTED.ordinal },
                 onOpenArticle = { openEditor(it) },
             )
+            Overlay.GROWTH -> fr.vintedassistant.mobile.ui.screens.GrowthScreen(
+                articles = articles,
+                sales = sales.orEmpty(),
+                stock = stock,
+                stats = dashboard,
+                modifier = modifier,
+                onExpress = { vm.startExpress { ids -> expressIds = ArrayList(ids); overlayIndex = Overlay.EXPRESS.ordinal } },
+                onPublish = { ids -> vintedQueue = ArrayList(ids); vintedArticle = ids.firstOrNull(); overlayIndex = Overlay.VINTED.ordinal },
+                onOpenArticle = { openEditor(it) },
+                onOpenSupplier = { overlayIndex = Overlay.SUPPLIER.ordinal },
+                onMessage = vm::show,
+            )
             Overlay.SUPPLIER -> SupplierWebScreen(modifier = modifier, onClose = { overlayIndex = Overlay.PURCHASES.ordinal })
             Overlay.VINTED -> VintedWebScreen(
                 articles = articles,
@@ -350,6 +362,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                     stock = stock,
                     onOpenPurchases = { overlayIndex = Overlay.PURCHASES.ordinal },
                     onOpenStock = { tabIndex = Tab.STOCK.ordinal },
+                    onOpenGrowth = { overlayIndex = Overlay.GROWTH.ordinal },
                 )
                 Tab.STOCK -> StockScreen(
                     articles = articles,
