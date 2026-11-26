@@ -531,3 +531,13 @@ n'affichait que les lignes avec une pièce libre : la ligne était invisible.
   livre des recettes et registre des achats en CSV (Excel, accents corrects).
 - **Tests sur appareil** ajoutés : vente déplacée au lieu d'être doublée, fusion d'une annonce republiée,
   suppression d'une vente. Le dépôt est public : la CI GitHub (compilation + émulateur) tourne de nouveau.
+
+## 1.9.0 (26 novembre) : passage à Android 17 (branche dev/android17)
+
+- Cible Android 17 : `targetSdk = 37`, compilation contre la révision 37.2 (QPR2), exigée par Compose 1.13.
+- Outils : AGP 8.13 → 9.5.3 (Kotlin intégré : le module `org.jetbrains.kotlin.android` disparaît de l'app),
+  Gradle 8.14.3 → 9.9.2, Kotlin 2.2.20 → 2.4.21, KSP 2.3.14 (KSP2), Java 21 en CI.
+- Bibliothèques : Compose BOM 2025.10.00 → 2026.11.01, Lifecycle 2.11.1, Room 2.8.5, WorkManager 2.12.0.
+- Changements d'Android 17 vérifiés pour cette appli : limite mémoire stricte des RemoteViews (widget : texte
+  seul, très léger), transparence des certificats par défaut (sans effet sur Vinted et Nihao), champs
+  `static final` non modifiables (non utilisé). Aucun changement de code nécessaire.

@@ -1,19 +1,22 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    // Kotlin est intégré à l'outil de compilation Android depuis sa version 9 : plus de module Kotlin à part.
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
     id("androidx.room")
 }
 android {
     namespace = "fr.vintedassistant.mobile"
-    compileSdk = 36
+    // Android 17, révision 37.2 (QPR2) : exigée par les bibliothèques Compose de novembre 2026.
+    compileSdk {
+        version = release(37) { minorApiLevel = 2 }
+    }
     defaultConfig {
         applicationId = "fr.vintedassistant.mobile"
         minSdk = 26
-        targetSdk = 36
-        versionCode = 62
-        versionName = "1.8.0"
+        targetSdk = 37
+        versionCode = 63
+        versionName = "1.9.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     // Clé de débogage fixe, versionnée : chaque APK de test a la même signature et
@@ -43,22 +46,22 @@ room {
     schemaDirectory("$projectDir/schemas")
 }
 dependencies {
-    implementation(platform("androidx.compose:compose-bom:2025.10.00"))
+    implementation(platform("androidx.compose:compose-bom:2026.11.01"))
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.1")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.1")
 
-    implementation("androidx.room:room-runtime:2.8.4")
-    implementation("androidx.room:room-ktx:2.8.4")
-    ksp("androidx.room:room-compiler:2.8.4")
+    implementation("androidx.room:room-runtime:2.8.5")
+    implementation("androidx.room:room-ktx:2.8.5")
+    ksp("androidx.room:room-compiler:2.8.5")
 
     // Rappel quotidien de republication (tâche différable, survit au redémarrage).
-    implementation("androidx.work:work-runtime-ktx:2.11.2")
+    implementation("androidx.work:work-runtime-ktx:2.12.0")
 
     // IA sur le téléphone : Gemini Nano via ML Kit (gratuit, hors ligne). API en bêta.
     implementation("com.google.mlkit:genai-prompt:1.0.0-beta4")
