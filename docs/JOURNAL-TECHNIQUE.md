@@ -572,3 +572,11 @@ Retour : « Je ne comprends pas ce que je dois faire » (deux bracelets trèfle 
   signaler » (clé gardée dans les préférences).
 - Ligne prise par une autre fiche : « Échanger les deux lignes » (`swapLinks`, coût de chaque ligne repris),
   test sur émulateur ajouté.
+
+## 1.10.2 (26 novembre) : choix du coloris lisible
+
+Retour : « Il n'y a aucun bracelet cœur, il n'y a que des trèfles. » Nihao nomme ces trèfles « Bracelet femme
+luxueux motif Cœur porte-bonheur » (traduction automatique), et ses lignes n'ont pas de photo.
+- En mode « choisir la bonne ligne » : titre « Quel coloris est ce bijou ? », chaque ligne affichée par son
+  coloris et son code NH, avec la photo du vrai bijou qui tient la pièce (ou d'une autre fiche du modèle).
+- En-tête : le nom fournisseur est signalé comme traduction automatique.

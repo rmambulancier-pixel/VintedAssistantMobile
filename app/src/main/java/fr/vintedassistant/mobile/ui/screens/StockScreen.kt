@@ -742,17 +742,24 @@ private fun LotPickerDialog(
         ).take(20)
         free + taken
     }
+    // Les noms Nihao sont des traductions automatiques (« motif Cœur » pour des trèfles) : en mode coloris,
+    // la ligne s'affiche par son coloris et son code, avec la photo du vrai bijou qui tient la pièce.
     PickerDialog(
-        title = "De quel achat vient cette fiche ?",
-        header = article.title,
+        title = if (model != null) "Quel coloris est ce bijou ?" else "De quel achat vient cette fiche ?",
+        header = article.title + if (model != null) "\n\nLe nom du fournisseur (« ${entries.firstOrNull()?.product?.name?.let(::stripVariant)?.take(50).orEmpty()} ») " +
+            "est une traduction automatique : fie-toi au coloris, au code NH du sachet et à la photo." else "",
         headerImage = article.photos.firstOrNull(),
         empty = "Aucune ligne d'achat ne correspond. Importe la commande correspondante dans « Achats fournisseur ».",
         entries = entries.map { e ->
+            val variant = fr.vintedassistant.mobile.domain.ExpressListing.variant(e.product.name)
+            val image = e.product.imageFile ?: e.holder?.photos?.firstOrNull()
+                ?: e.product.articles.firstNotNullOfOrNull { it.photos.firstOrNull() }
             Triple(
-                e.product.imageFile,
-                variantFirst(e.product.name) + (e.lot.sku.takeIf { it.isNotBlank() }?.let { " • $it" } ?: ""),
-                if (e.holder == null) "Commande du ${dateFormat.format(Date(e.lot.orderedAt))} • ${e.lot.remaining} libre(s) • revient ${Money.formatEuros(e.lot.landedUnitCents)}"
-                else "Déjà prise par « ${e.holder.title.take(45)} » (${e.holder.status.label.lowercase()}) • toucher pour la récupérer",
+                image,
+                if (model != null && variant.isNotBlank()) variant + (e.lot.sku.takeIf { it.isNotBlank() }?.let { " • $it" } ?: "")
+                else variantFirst(e.product.name) + (e.lot.sku.takeIf { it.isNotBlank() }?.let { " • $it" } ?: ""),
+                if (e.holder == null) "Libre • commande du ${dateFormat.format(Date(e.lot.orderedAt))} • revient ${Money.formatEuros(e.lot.landedUnitCents)}"
+                else "Tenue par « ${e.holder.title.take(50)} » (${e.holder.status.label.lowercase()}) • toucher pour l'échanger ou la récupérer",
             )
         },
         onDismiss = onDismiss,
@@ -841,6 +848,9 @@ private fun variantFirst(name: String): String {
     val variant = m.groupValues[2].trim()
     return if (variant.isEmpty()) name else "[$variant] ${m.groupValues[1].trim()}"
 }
+
+/** Nom fournisseur tel quel, sans la variante finale entre parenthèses. */
+private fun stripVariant(name: String): String = name.replace(Regex("""\s*\(([^()]*(?:\([^()]*\))?[^()]*)\)\s*$"""), "").trim()
 
 /** Nom fournisseur sans la variante finale : « Bracelet Cœur … (Argent + bleu) » → « Bracelet Cœur … ». */
 private fun baseName(name: String): String =
