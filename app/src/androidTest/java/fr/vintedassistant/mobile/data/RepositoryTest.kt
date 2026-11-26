@@ -719,4 +719,49 @@ class RepositoryTest {
         assertEquals(1, purchases.removeSuspiciousLines())
         assertEquals(listOf("NH-R"), purchases.orders.first().map { it.orderRef })
     }
+
+    /** 19 novembre : vente enregistrée sur la mauvaise fiche ; l'import la déplace au lieu d'en créer une seconde. */
+    @Test
+    fun importMovesMisattributedSaleInsteadOfDuplicating() = runBlocking {
+        val t = "Bracelet Ange Gardien Argenté"
+        val scanBoth = setOf(100L, 200L)
+        val a = repo.upsertImported(ImportedListing(100, "https://www.vinted.fr/items/100-ange", t, 600), sold = false, scan = scanBoth).articleId
+        val b = repo.upsertImported(ImportedListing(200, "https://www.vinted.fr/items/200-ange", t, 600), sold = false, scan = scanBoth).articleId
+        assertTrue(a != b)
+        repo.recordSale(a, SaleValidation.Valid(500, 0, ""))
+        now += 6 * 24 * 3600 * 1000L
+        // Import suivant : l'annonce 200 est vendue, l'annonce 100 n'existe plus.
+        repo.upsertImported(ImportedListing(200, "https://www.vinted.fr/items/200-ange", t, 600), sold = true,
+            scan = setOf(200L), taken = HashSet(), createSold = false, soldScan = setOf(200L))
+        val sales = repo.sales.first()
+        assertEquals(1, sales.size)
+        assertEquals(b, sales.single().articleId)
+        assertEquals(ArticleStatus.SOLD, repo.getArticle(b)!!.status)
+        assertEquals(ArticleStatus.DRAFT, repo.getArticle(a)!!.status)
+    }
+
+    /** Annonce republiée : le doublon créé par l'import est fusionné dans la vraie fiche. */
+    @Test
+    fun reconcileMergesRepublishedDuplicate() = runBlocking {
+        val t = "Bracelet trèfle argenté et noir 18 cm"
+        val k = repo.create(fields().copy(title = t))
+        repo.upsertImported(ImportedListing(300, "https://www.vinted.fr/items/300-trefle", t, 500), sold = false)
+        val d = repo.upsertImported(ImportedListing(400, "https://www.vinted.fr/items/400-trefle", t, 500, favorites = 6, views = 73),
+            sold = false, scan = setOf(300L, 400L)).articleId
+        assertTrue(d != k)
+        val fix = repo.reconcileImport(active = setOf(400L), sold = emptySet(), reliable = true)
+        assertEquals(1, fix.merged)
+        assertEquals(null, repo.getArticle(d))
+        val kept = repo.getArticle(k)!!
+        assertTrue(kept.vintedUrl.contains("/items/400"))
+        assertEquals(73, kept.viewsCount)
+    }
+
+    @Test
+    fun deleteDuplicateSale() = runBlocking {
+        val id = repo.create(fields())
+        val saleId = repo.recordSale(id, SaleValidation.Valid(2000, 0, ""))
+        repo.deleteSale(saleId)
+        assertTrue(repo.sales.first().isEmpty())
+    }
 }

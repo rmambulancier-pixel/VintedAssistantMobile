@@ -303,6 +303,12 @@ class MainViewModel(
 
     fun unlinkPurchase(articleId: Long) = launchSafely("Détachement impossible.") { purchases.unlink(articleId) }
 
+    /** Vente en double repérée par le contrôle de cohérence : supprimée après confirmation de l'utilisateur. */
+    fun deleteDuplicateSale(saleId: Long) = launchSafely("Suppression impossible.") {
+        repository.deleteSale(saleId)
+        _message.value = "Vente en double supprimée."
+    }
+
     /**
      * La pièce d'un achat est prise par une autre fiche (souvent un brouillon en double) : [articleId] la récupère.
      * L'autre fiche est supprimée si [deleteHolder] (brouillon sans annonce ni vente), sinon elle passe « sans achat ».

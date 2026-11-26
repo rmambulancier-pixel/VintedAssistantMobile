@@ -120,15 +120,27 @@ object VintedNotificationClassifier {
 
     /**
      * Fiche vendue d'après une notification : la mieux reconnue. Plusieurs fiches au même titre (pièces
-     * identiques) : la plus anciennement en ligne. Deux titres différents reconnus aussi bien : on ne devine pas.
+     * identiques) : d'abord une fiche réservée ou en ligne avec son lien, puis la plus anciennement en ligne. Deux titres
+     * différents reconnus aussi bien : on ne devine pas. Le contrôle de cohérence et l'import rattrapent un mauvais choix.
      */
     fun soldArticle(text: String, inStock: List<Article>): Article? {
         val scored = matchScored(text, inStock)
         val best = scored.firstOrNull() ?: return null
         val key = normalize(best.first.title)
         if (scored.any { it.second == best.second && normalize(it.first.title) != key }) return null
+        // Pièces identiques : une fiche réellement publiée (réservée, puis en ligne avec son lien) avant un brouillon.
+        // Le 13 novembre, la plus ancienne avait été choisie alors que l'annonce vendue était celle d'une autre fiche.
+        val rank = { a: Article ->
+            when {
+                a.status == ArticleStatus.RESERVED -> 0
+                a.status == ArticleStatus.ONLINE && a.vintedUrl.isNotBlank() -> 1
+                a.status == ArticleStatus.ONLINE -> 2
+                else -> 3
+            }
+        }
         return scored.filter { normalize(it.first.title) == key }.map { it.first }
-            .minByOrNull { it.lastVisibleAt ?: it.createdAt }
+            .sortedWith(compareBy<Article> { rank(it) }.thenBy { it.lastVisibleAt ?: it.createdAt })
+            .firstOrNull()
     }
 
     /** Prix de vente lu dans la notification s'il est plausible (entre la moitié et le prix affiché), sinon null. */

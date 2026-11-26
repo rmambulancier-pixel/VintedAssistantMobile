@@ -168,6 +168,9 @@ fun SettingsScreen(
         }
         if (journal) fr.vintedassistant.mobile.ui.vinted.IncidentJournalDialog(onDismiss = { journal = false })
 
+        SectionTitle("Fiscalité")
+        FiscalSection(onMessage)
+
         SectionTitle("Finances")
         Field("Taux de cotisations sociales (%)", rate, { rate = it }, decimal = true)
         Text(
@@ -337,4 +340,58 @@ fun appVersion(context: android.content.Context): String = try {
     context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
 } catch (e: Exception) {
     "?"
+}
+
+/**
+ * Compteur DAC7 de l'année civile et registres exportables (livre des recettes, registre des achats).
+ * Repères chiffrés seulement : le statut et la déclaration se voient avec l'Urssaf ou un comptable.
+ */
+@Composable
+private fun FiscalSection(onMessage: (String) -> Unit) {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val c = context.container()
+    val sales by c.articleRepository.sales.collectAsState(initial = emptyList())
+    val year = java.time.LocalDate.now().year
+    val y = remember(sales) { fr.vintedassistant.mobile.domain.Fiscal.year(sales, year) }
+    Text(fr.vintedassistant.mobile.domain.Fiscal.text(y), style = MaterialTheme.typography.bodyMedium,
+        color = if (y.reached) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+    androidx.compose.material3.LinearProgressIndicator(
+        progress = { (maxOf(y.salesPercent, y.revenuePercent) / 100f).coerceIn(0f, 1f) },
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Text(
+        "Vinted demande le formulaire DAC7 dès 30 ventes ou plus de 2 000 € sur l'année civile (l'un ou l'autre). " +
+            "Ce n'est pas un impôt. L'achat pour revendre est en revanche une activité commerciale : statut et " +
+            "déclaration à voir avec l'Urssaf ou un comptable. Les registres ci-dessous reprennent tes ventes et tes achats." +
+            (if (y.undated > 0) " ${y.undated} vente(s) importée(s) sans date exacte sont comptées à la date d'import." else ""),
+        style = MaterialTheme.typography.bodySmall,
+    )
+    fun share(name: String, content: String) {
+        val dir = java.io.File(context.cacheDir, "exports").apply { mkdirs() }
+        val file = java.io.File(dir, name).apply { writeText(content, Charsets.UTF_8) }
+        context.startActivity(c.dataExport.shareIntent(file, "text/csv"))
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = {
+            scope.launch {
+                try { share("livre-des-recettes-$year.csv", fr.vintedassistant.mobile.domain.Fiscal.receiptsCsv(c.articleRepository.sales.first(), year)) }
+                catch (e: Exception) { onMessage("Export impossible.") }
+            }
+        }, modifier = Modifier.weight(1f)) { Text("Livre des recettes") }
+        OutlinedButton(onClick = {
+            scope.launch {
+                try {
+                    val zone = java.time.ZoneId.of("Europe/Paris")
+                    val orders = c.purchaseRepository.orders.first().map { o ->
+                        fr.vintedassistant.mobile.domain.Fiscal.Purchase(
+                            java.time.Instant.ofEpochMilli(o.orderedAt).atZone(zone).toLocalDate(), o.supplier, o.orderRef,
+                            o.itemsTotalCents, o.shippingCents, o.feesCents, o.items.sumOf { it.quantity },
+                        )
+                    }
+                    share("registre-des-achats-$year.csv", fr.vintedassistant.mobile.domain.Fiscal.purchasesCsv(orders, year))
+                } catch (e: Exception) { onMessage("Export impossible.") }
+            }
+        }, modifier = Modifier.weight(1f)) { Text("Registre des achats") }
+    }
 }

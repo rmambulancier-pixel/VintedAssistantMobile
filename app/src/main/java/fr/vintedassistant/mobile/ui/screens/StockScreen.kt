@@ -20,6 +20,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -84,6 +86,8 @@ class StockActions(
     val link: (article: Article, lot: StockLot) -> Unit,
     /** La pièce du lot est déjà prise par [holder] : la fiche la récupère ; [holder] est supprimée ou détachée. */
     val takeOver: (article: Article, lot: StockLot, holder: Article, deleteHolder: Boolean) -> Unit = { _, _, _, _ -> },
+    /** Vente en double à supprimer (contrôle de cohérence). */
+    val deleteSale: (saleId: Long) -> Unit = {},
     /** La commande [orderId] est arrivée : ses pièces deviennent vendables. */
     val markReceived: (orderId: Long) -> Unit,
     /** Mise en vente express de toutes les pièces reçues sans fiche. */
@@ -105,8 +109,10 @@ fun StockScreen(
     modifier: Modifier,
     actions: StockActions,
     sales: List<Sale> = emptyList(),
+    issues: List<fr.vintedassistant.mobile.domain.Coherence.Issue> = emptyList(),
 ) {
     var view by rememberSaveable { mutableStateOf(StockView.ONLINE) }
+    var confirmSale by remember { mutableStateOf<fr.vintedassistant.mobile.domain.Coherence.Issue?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
     var linkProduct by remember { mutableStateOf<StockProduct?>(null) }
     var linkArticle by remember { mutableStateOf<Article?>(null) }
@@ -187,8 +193,35 @@ fun StockScreen(
         )
     }
 
+    confirmSale?.let { issue ->
+        AlertDialog(
+            onDismissRequest = { confirmSale = null },
+            title = { Text("Supprimer la vente en double ?") },
+            text = { Text(issue.text + "\n\nLa vente la plus ancienne est gardée ; celle créée à l'import est supprimée.") },
+            confirmButton = { TextButton(onClick = { issue.otherId?.let(actions.deleteSale); confirmSale = null }) { Text("Supprimer") } },
+            dismissButton = { TextButton(onClick = { confirmSale = null }) { Text("Annuler") } },
+        )
+    }
+
     LazyColumn(modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         message?.let { msg -> item { Column(Modifier.padding(top = 8.dp)) { MessageCard(msg, onDismissMessage) } } }
+        if (issues.isNotEmpty()) {
+            item {
+                IssuesCard(issues, onFix = { issue ->
+                    val byId = articles.orEmpty().associateBy { it.id }
+                    when (issue.kind) {
+                        fr.vintedassistant.mobile.domain.Coherence.Kind.DUPLICATE_PIECE -> {
+                            val a = issue.articleId?.let(byId::get)
+                            val holder = issue.otherId?.let(byId::get)
+                            val lot = stock?.products.orEmpty().flatMap { it.lots }.firstOrNull { it.itemId == issue.itemId }
+                            if (a != null && holder != null && lot != null) takeOver = Triple(a, lot, holder)
+                        }
+                        fr.vintedassistant.mobile.domain.Coherence.Kind.DUPLICATE_SALE -> confirmSale = issue
+                        fr.vintedassistant.mobile.domain.Coherence.Kind.VARIANT_MISMATCH -> issue.articleId?.let(actions.openArticle)
+                    }
+                })
+            }
+        }
         item {
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = actions.openVinted, modifier = Modifier.weight(1f)) { Text("Vinted intégré") }
@@ -785,4 +818,32 @@ private fun TemplatePickerDialog(
         onDismiss = onDismiss,
         onPick = { i -> onPick(sorted[i]) },
     )
+}
+
+/** Points à vérifier du contrôle de cohérence, chacun avec sa correction en un toucher. */
+@Composable
+private fun IssuesCard(issues: List<fr.vintedassistant.mobile.domain.Coherence.Issue>, onFix: (fr.vintedassistant.mobile.domain.Coherence.Issue) -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                if (issues.size == 1) "1 point à vérifier" else "${issues.size} points à vérifier",
+                style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            issues.forEach { issue ->
+                Text(issue.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                TextButton(onClick = { onFix(issue) }) {
+                    Text(
+                        when (issue.kind) {
+                            fr.vintedassistant.mobile.domain.Coherence.Kind.DUPLICATE_PIECE -> "Récupérer la pièce"
+                            fr.vintedassistant.mobile.domain.Coherence.Kind.DUPLICATE_SALE -> "Supprimer la vente en double"
+                            fr.vintedassistant.mobile.domain.Coherence.Kind.VARIANT_MISMATCH -> "Ouvrir la fiche"
+                        },
+                    )
+                }
+            }
+        }
+    }
 }

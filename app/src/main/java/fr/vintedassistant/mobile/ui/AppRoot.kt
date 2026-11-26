@@ -198,6 +198,11 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
     }
     val tab = Tab.entries[tabIndex]
     val unread = notices.count { !it.handled }
+    // Contrôle de cohérence : refait à chaque changement des fiches, ventes ou achats.
+    val issues = remember(articles, sales, stock) {
+        val lines = stock?.products.orEmpty().flatMap { p -> p.lots.map { fr.vintedassistant.mobile.domain.Coherence.Line(it.itemId, p.name) } }
+        fr.vintedassistant.mobile.domain.Coherence.check(articles.orEmpty(), sales.orEmpty(), lines, System.currentTimeMillis())
+    }
 
     Scaffold(
         topBar = {
@@ -231,7 +236,11 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                                 if (t == Tab.ASSISTANT) { assistantArticle = null; assistantTab = 0 }
                                 vm.refreshClock()
                             },
-                            icon = { Icon(t.icon, contentDescription = null) },
+                            icon = {
+                                if (t == Tab.STOCK && issues.isNotEmpty()) {
+                                    BadgedBox(badge = { Badge { Text(issues.size.toString()) } }) { Icon(t.icon, contentDescription = null) }
+                                } else Icon(t.icon, contentDescription = null)
+                            },
                             label = { Text(t.label) },
                         )
                     }
@@ -349,6 +358,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                     onDismissMessage = vm::dismissMessage,
                     modifier = modifier,
                     sales = sales.orEmpty(),
+                    issues = issues,
                     actions = StockActions(
                         openArticle = ::openEditor,
                         openPurchases = { overlayIndex = Overlay.PURCHASES.ordinal },
@@ -357,6 +367,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                         draftFromPurchase = { itemId -> vm.draftFromPurchase(itemId, ::openEditor) },
                         link = { a, lot -> vm.linkToPurchase(a.id, lot.itemId, a.title, lot.landedUnitCents) },
                         takeOver = { a, lot, holder, delete -> vm.takeOverPurchase(a.id, lot.itemId, a.title, holder.id, holder.title, delete) },
+                        deleteSale = { id -> vm.deleteDuplicateSale(id) },
                         markReceived = { orderId -> vm.setOrderReceived(orderId, true) },
                         inventory = { overlayIndex = Overlay.INVENTORY.ordinal },
                         register = { overlayIndex = Overlay.REGISTER.ordinal },

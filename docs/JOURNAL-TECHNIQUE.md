@@ -516,3 +516,18 @@ n'affichait que les lignes avec une pièce libre : la ligne était invisible.
   d'abord) et le code produit.
 - Toucher une ligne prise : « Récupérer et supprimer le brouillon » (brouillon sans annonce ni vente) ou
   « Récupérer » (l'autre fiche passe dans « Sans achat »).
+
+## 1.8.0 (26 novembre) : fiabilité et repères fiscaux
+
+- **Contrôle de cohérence** (`domain/Coherence`, testé sur les cas réels) refait à chaque changement ; badge
+  sur l'onglet Stock et bloc « À vérifier » avec correction en un toucher :
+  - pièce en double (fiche sans achat ↔ brouillon sans annonce qui tient sa pièce, coloris compatible) →
+    récupérer la pièce ;
+  - vente en double (vente créée à l'import + vente du même bijou à 10 jours au plus) → supprimer (confirmé) ;
+  - coloris contradictoire entre le titre et la ligne d'achat (métal ou couleur) → ouvrir la fiche.
+- **Vente notifiée** : entre fiches identiques, priorité à une fiche réservée, puis en ligne avec son lien,
+  puis la plus ancienne (avant : la plus ancienne seulement).
+- **Fiscalité** (Réglages, `domain/Fiscal`) : compteur DAC7 de l'année civile (30 ventes ou plus de 2 000 €),
+  livre des recettes et registre des achats en CSV (Excel, accents corrects).
+- **Tests sur appareil** ajoutés : vente déplacée au lieu d'être doublée, fusion d'une annonce republiée,
+  suppression d'une vente. Le dépôt est public : la CI GitHub (compilation + émulateur) tourne de nouveau.
