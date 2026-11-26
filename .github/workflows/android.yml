@@ -24,7 +24,7 @@ jobs:
 
       # Version de Gradle fixée par le wrapper du dépôt (gradle/wrapper).
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # Le SDK Android est préinstallé sur les serveurs GitHub, mais sdkmanager
       # n'est pas dans le PATH : on l'appelle par son chemin complet.
@@ -50,7 +50,7 @@ jobs:
       - name: Upload test report
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-report
           path: app/build/reports/tests/
@@ -60,7 +60,7 @@ jobs:
       - name: Upload debug APK
         id: upload_apk
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: VintedAssistantMobile-debug
           path: app/build/outputs/apk/debug/app-debug.apk
@@ -78,7 +78,7 @@ jobs:
 
       - name: Schémas Room (à versionner)
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: room-schemas
           path: app/schemas/
@@ -100,7 +100,7 @@ jobs:
           java-version: "21"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Enable KVM
         run: |
@@ -121,7 +121,7 @@ jobs:
       - name: Upload instrumented test report
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: instrumented-test-report
           path: app/build/reports/androidTests/
