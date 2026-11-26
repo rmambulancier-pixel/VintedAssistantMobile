@@ -303,6 +303,11 @@ class MainViewModel(
 
     fun unlinkPurchase(articleId: Long) = launchSafely("Détachement impossible.") { purchases.unlink(articleId) }
 
+    fun swapPurchases(articleId: Long, title: String, otherId: Long, otherTitle: String) = launchSafely("Échange impossible.") {
+        purchases.swapLinks(articleId, otherId)
+        _message.value = "Lignes d'achat échangées entre « ${title.take(40)} » et « ${otherTitle.take(40)} »."
+    }
+
     /** Vente en double repérée par le contrôle de cohérence : supprimée après confirmation de l'utilisateur. */
     fun deleteDuplicateSale(saleId: Long) = launchSafely("Suppression impossible.") {
         repository.deleteSale(saleId)

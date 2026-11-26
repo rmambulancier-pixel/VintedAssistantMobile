@@ -22,7 +22,10 @@ object Coherence {
         val otherId: Long?,
         /** DUPLICATE_PIECE : ligne d'achat à récupérer. */
         val itemId: Long? = null,
-    )
+    ) {
+        /** Clé stable, pour qu'un point jugé correct par l'utilisateur ne revienne plus. */
+        val key: String get() = "${kind.name}:$articleId:${otherId ?: itemId ?: 0}"
+    }
 
     /** Ligne d'achat : identifiant et nom du fournisseur (avec le coloris entre parenthèses). */
     data class Line(val itemId: Long, val name: String)
@@ -105,7 +108,8 @@ object Coherence {
             if (contradicts(a.title, line.name)) {
                 out += Issue(
                     Kind.VARIANT_MISMATCH,
-                    "« ${a.title.take(50)} » est rattaché à la ligne « ${variantOf(line.name)} » : coloris à vérifier.",
+                    "« ${a.title.take(60)} » : le titre et la commande ne disent pas le même coloris " +
+                        "(commande : « ${variantOf(line.name)} »). Regarde le bijou, puis touche « Corriger ».",
                     a.id, null, a.purchaseItemId,
                 )
             }

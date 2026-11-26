@@ -562,3 +562,13 @@ mais 9 annonces en ligne pour 43 pièces hors vitrine. Le frein est le volume pu
 - Correctif avant livraison : `Pattern.UNICODE_CHARACTER_CLASS` n'existe pas sur Android (plantage au chargement
   d'`ExpressListing`, relevé par les tests sur émulateur). Bornes de mot écrites avec `(?<![\p{L}\p{N}])` et
   `(?![\p{L}\p{N}])`, et test sur émulateur ajouté pour le titre au bon coloris.
+
+## 1.10.1 (26 novembre) : « Coloris à vérifier » compréhensible et corrigeable
+
+Retour : « Je ne comprends pas ce que je dois faire » (deux bracelets trèfle à pierres sombres).
+- Message en clair (« le titre et la commande ne disent pas le même coloris »), bouton « Corriger » :
+  « le titre est juste : choisir la bonne ligne » (tous les coloris du modèle, libres ou pris, avec la fiche
+  qui tient chaque pièce), « la commande est juste : corriger le titre », « c'est bon comme ça, ne plus
+  signaler » (clé gardée dans les préférences).
+- Ligne prise par une autre fiche : « Échanger les deux lignes » (`swapLinks`, coût de chaque ligne repris),
+  test sur émulateur ajouté.

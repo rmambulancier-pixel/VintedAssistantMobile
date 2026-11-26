@@ -88,6 +88,10 @@ class StockActions(
     val takeOver: (article: Article, lot: StockLot, holder: Article, deleteHolder: Boolean) -> Unit = { _, _, _, _ -> },
     /** Vente en double à supprimer (contrôle de cohérence). */
     val deleteSale: (saleId: Long) -> Unit = {},
+    /** Échange des lignes d'achat de deux fiches (coloris inversés). */
+    val swap: (a: Article, b: Article) -> Unit = { _, _ -> },
+    /** Point du contrôle jugé correct par l'utilisateur : il ne revient plus. */
+    val ignoreIssue: (key: String) -> Unit = {},
     /** La commande [orderId] est arrivée : ses pièces deviennent vendables. */
     val markReceived: (orderId: Long) -> Unit,
     /** Mise en vente express de toutes les pièces reçues sans fiche. */
@@ -113,6 +117,8 @@ fun StockScreen(
 ) {
     var view by rememberSaveable { mutableStateOf(StockView.ONLINE) }
     var confirmSale by remember { mutableStateOf<fr.vintedassistant.mobile.domain.Coherence.Issue?>(null) }
+    var fixVariant by remember { mutableStateOf<fr.vintedassistant.mobile.domain.Coherence.Issue?>(null) }
+    var modelFilter by remember { mutableStateOf<String?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
     var linkProduct by remember { mutableStateOf<StockProduct?>(null) }
     var linkArticle by remember { mutableStateOf<Article?>(null) }
@@ -143,9 +149,10 @@ fun StockScreen(
             article = article,
             products = stock?.products.orEmpty(),
             dateFormat = dateFormat,
-            onDismiss = { linkArticle = null },
-            onPick = { lot -> linkArticle = null; actions.link(article, lot) },
-            onTakeOver = { lot, holder -> linkArticle = null; takeOver = Triple(article, lot, holder) },
+            model = modelFilter,
+            onDismiss = { linkArticle = null; modelFilter = null },
+            onPick = { lot -> linkArticle = null; modelFilter = null; actions.link(article, lot) },
+            onTakeOver = { lot, holder -> linkArticle = null; modelFilter = null; takeOver = Triple(article, lot, holder) },
         )
     }
     takeOver?.let { (article, lot, holder) ->
@@ -167,6 +174,16 @@ fun StockScreen(
                         Button(onClick = { takeOver = null; actions.takeOver(article, lot, holder, true) }, modifier = Modifier.fillMaxWidth()) {
                             Text("Récupérer et supprimer le brouillon")
                         }
+                    }
+                    if (article.purchaseItemId != null) {
+                        // Coloris inversés entre deux fiches : chacune prend la ligne de l'autre.
+                        Button(onClick = { takeOver = null; actions.swap(article, holder) }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Échanger les deux lignes")
+                        }
+                        Text(
+                            "« ${holder.title.take(40)} » prendra la ligne actuelle de « ${article.title.take(40)} ».",
+                            style = MaterialTheme.typography.labelSmall,
+                        )
                     }
                     OutlinedButton(onClick = { takeOver = null; actions.takeOver(article, lot, holder, false) }, modifier = Modifier.fillMaxWidth()) {
                         Text(if (plainDraft) "Récupérer, garder le brouillon sans achat" else "Récupérer la pièce")
@@ -193,6 +210,33 @@ fun StockScreen(
         )
     }
 
+    fixVariant?.let { issue ->
+        val a = articles.orEmpty().firstOrNull { it.id == issue.articleId }
+        val lineName = stock?.products.orEmpty().firstOrNull { p -> p.lots.any { it.itemId == issue.itemId } }?.name.orEmpty()
+        AlertDialog(
+            onDismissRequest = { fixVariant = null },
+            title = { Text("Quel est le bon coloris ?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Titre : « ${a?.title.orEmpty()} »", style = MaterialTheme.typography.bodySmall)
+                    Text("Commande : « ${fr.vintedassistant.mobile.domain.Coherence.variantOf(lineName)} »", style = MaterialTheme.typography.bodySmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    Text("Regarde le bijou (ou le code NH… sur son sachet), puis choisis :", style = MaterialTheme.typography.bodySmall)
+                    Button(onClick = {
+                        fixVariant = null
+                        if (a != null) { modelFilter = fr.vintedassistant.mobile.domain.ExpressListing.modelName(lineName); linkArticle = a }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Le titre est juste : choisir la bonne ligne") }
+                    OutlinedButton(onClick = { fixVariant = null; a?.let { actions.openArticle(it.id) } }, modifier = Modifier.fillMaxWidth()) {
+                        Text("La commande est juste : corriger le titre")
+                    }
+                    TextButton(onClick = { fixVariant = null; actions.ignoreIssue(issue.key) }, modifier = Modifier.fillMaxWidth()) {
+                        Text("C'est bon comme ça, ne plus signaler")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { fixVariant = null }) { Text("Annuler") } },
+        )
+    }
     confirmSale?.let { issue ->
         AlertDialog(
             onDismissRequest = { confirmSale = null },
@@ -217,7 +261,7 @@ fun StockScreen(
                             if (a != null && holder != null && lot != null) takeOver = Triple(a, lot, holder)
                         }
                         fr.vintedassistant.mobile.domain.Coherence.Kind.DUPLICATE_SALE -> confirmSale = issue
-                        fr.vintedassistant.mobile.domain.Coherence.Kind.VARIANT_MISMATCH -> issue.articleId?.let(actions.openArticle)
+                        fr.vintedassistant.mobile.domain.Coherence.Kind.VARIANT_MISMATCH -> fixVariant = issue
                     }
                 })
             }
@@ -662,12 +706,25 @@ private fun LotPickerDialog(
     onDismiss: () -> Unit,
     onPick: (StockLot) -> Unit,
     onTakeOver: (StockLot, Article) -> Unit = { _, _ -> },
+    /** Modèle fournisseur : ne montrer que ses coloris (toutes les lignes, libres ou prises). */
+    model: String? = null,
 ) {
     // Lignes reçues avec une pièce libre d'abord ; puis, plus bas, les lignes dont toutes les pièces ont déjà une
     // fiche (avec le nom de cette fiche) : le 25 novembre, un bracelet « introuvable » était sur une ligne prise
     // par un brouillon en double.
     data class Entry(val product: StockProduct, val lot: StockLot, val holder: Article?)
-    val entries = remember(article, products) {
+    val entries = remember(article, products, model) {
+        if (model != null) {
+            // Tous les coloris du modèle, avec la fiche qui tient chaque pièce (en ligne comprise).
+            return@remember products.filter { fr.vintedassistant.mobile.domain.ExpressListing.modelName(it.name) == model }.flatMap { p ->
+                p.lots.filter { it.received && it.itemId != article.purchaseItemId }.mapNotNull { lot ->
+                    if (lot.remaining > 0) Entry(p, lot, null)
+                    else p.articles.filter { it.purchaseItemId == lot.itemId && it.id != article.id && it.status.inStock }
+                        .minByOrNull { if (it.status == fr.vintedassistant.mobile.domain.ArticleStatus.DRAFT) 0 else 1 }
+                        ?.let { Entry(p, lot, it) }
+                }
+            }
+        }
         val sim = { p: StockProduct -> StockLedger.similarity(article.title, p.name) }
         val free = products.flatMap { p -> p.lots.filter { it.received && it.remaining > 0 && it.itemId != article.purchaseItemId }.map { Entry(p, it, null) } }
             .sortedWith(compareByDescending<Entry> { sim(it.product) }.thenBy { it.lot.orderedAt })
@@ -839,7 +896,7 @@ private fun IssuesCard(issues: List<fr.vintedassistant.mobile.domain.Coherence.I
                         when (issue.kind) {
                             fr.vintedassistant.mobile.domain.Coherence.Kind.DUPLICATE_PIECE -> "Récupérer la pièce"
                             fr.vintedassistant.mobile.domain.Coherence.Kind.DUPLICATE_SALE -> "Supprimer la vente en double"
-                            fr.vintedassistant.mobile.domain.Coherence.Kind.VARIANT_MISMATCH -> "Ouvrir la fiche"
+                            fr.vintedassistant.mobile.domain.Coherence.Kind.VARIANT_MISMATCH -> "Corriger"
                         },
                     )
                 }

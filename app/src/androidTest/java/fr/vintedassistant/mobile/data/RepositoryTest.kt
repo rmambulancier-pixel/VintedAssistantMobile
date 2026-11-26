@@ -774,4 +774,25 @@ class RepositoryTest {
             fr.vintedassistant.mobile.domain.ExpressListing.retitle("Bracelet trèfle strass rose poudré et or 17 cm style joaillerie vintage chic", line),
         )
     }
+
+    /** Coloris inversés entre deux fiches : l'échange donne à chacune la ligne (et le coût) de l'autre. */
+    @Test
+    fun swapPurchaseLinks() = runBlocking {
+        val purchases = PurchaseRepository(db, photoStore = null, clock = { now })
+        purchases.saveOrder("Nihaojewelry", ParsedOrder("T", 1_000L, listOf(
+            ParsedOrderLine("Bracelet trèfle (Noir Doré)", 40, 1, "", "", sku = "NH65"),
+            ParsedOrderLine("Bracelet trèfle (Argent + bleu)", 60, 1, "", "", sku = "NH64"),
+        ), 0, 0, null, ""), downloadImages = false, received = true)
+        val items = purchases.orders.first().single().items
+        val noir = items.first { it.sku == "NH65" }
+        val bleu = items.first { it.sku == "NH64" }
+        val a = repo.create(fields().copy(title = "Bracelet trèfle argenté et bleu"))
+        val b = repo.create(fields().copy(title = "Bracelet trèfle doré et noir"))
+        purchases.link(a, noir.id)
+        purchases.link(b, bleu.id)
+        purchases.swapLinks(a, b)
+        assertEquals(bleu.id, repo.getArticle(a)!!.purchaseItemId)
+        assertEquals(noir.id, repo.getArticle(b)!!.purchaseItemId)
+        assertEquals(bleu.landedUnitCents, repo.getArticle(a)!!.costCents)
+    }
 }

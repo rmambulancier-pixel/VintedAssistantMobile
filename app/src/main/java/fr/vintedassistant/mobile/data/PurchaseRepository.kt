@@ -171,6 +171,19 @@ class PurchaseRepository(
         saleDao.syncCostForImported(articleId, item.landedUnitCents)
     }
 
+    /** Échange les lignes d'achat de deux fiches (coloris inversés) ; chacune prend le coût de sa nouvelle ligne. */
+    suspend fun swapLinks(articleA: Long, articleB: Long) = db.withTransaction {
+        val a = articleDao.getById(articleA) ?: return@withTransaction
+        val b = articleDao.getById(articleB) ?: return@withTransaction
+        val now = clock()
+        val itemA = a.purchaseItemId?.let { dao.getItem(it) }
+        val itemB = b.purchaseItemId?.let { dao.getItem(it) }
+        articleDao.update(a.copy(purchaseItemId = itemB?.id, costCents = itemB?.landedUnitCents ?: a.costCents, updatedAt = now))
+        articleDao.update(b.copy(purchaseItemId = itemA?.id, costCents = itemA?.landedUnitCents ?: b.costCents, updatedAt = now))
+        itemB?.let { saleDao.syncCostForImported(articleA, it.landedUnitCents) }
+        itemA?.let { saleDao.syncCostForImported(articleB, it.landedUnitCents) }
+    }
+
     /**
      * Vente sans fiche (lot Vinted, pièce envoyée à la place d'une autre…) : crée une fiche « Vendu » pour la
      * pièce réellement sortie du stock, rattachée à son achat, et lui associe la vente avec ce coût d'achat.

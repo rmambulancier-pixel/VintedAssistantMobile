@@ -198,10 +198,15 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
     }
     val tab = Tab.entries[tabIndex]
     val unread = notices.count { !it.handled }
-    // Contrôle de cohérence : refait à chaque changement des fiches, ventes ou achats.
-    val issues = remember(articles, sales, stock) {
+    // Contrôle de cohérence : refait à chaque changement des fiches, ventes ou achats. Les points jugés corrects
+    // par l'utilisateur (« ne plus signaler ») sont gardés dans les préférences.
+    val appContext = androidx.compose.ui.platform.LocalContext.current
+    val coherencePrefs = remember { appContext.getSharedPreferences("coherence", android.content.Context.MODE_PRIVATE) }
+    var ignored by remember { mutableStateOf(coherencePrefs.getStringSet("ignored", emptySet()).orEmpty()) }
+    val issues = remember(articles, sales, stock, ignored) {
         val lines = stock?.products.orEmpty().flatMap { p -> p.lots.map { fr.vintedassistant.mobile.domain.Coherence.Line(it.itemId, p.name) } }
         fr.vintedassistant.mobile.domain.Coherence.check(articles.orEmpty(), sales.orEmpty(), lines, System.currentTimeMillis())
+            .filter { it.key !in ignored }
     }
 
     Scaffold(
@@ -381,6 +386,11 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                         link = { a, lot -> vm.linkToPurchase(a.id, lot.itemId, a.title, lot.landedUnitCents) },
                         takeOver = { a, lot, holder, delete -> vm.takeOverPurchase(a.id, lot.itemId, a.title, holder.id, holder.title, delete) },
                         deleteSale = { id -> vm.deleteDuplicateSale(id) },
+                        swap = { a, b -> vm.swapPurchases(a.id, a.title, b.id, b.title) },
+                        ignoreIssue = { key ->
+                            ignored = ignored + key
+                            coherencePrefs.edit().putStringSet("ignored", ignored).apply()
+                        },
                         markReceived = { orderId -> vm.setOrderReceived(orderId, true) },
                         inventory = { overlayIndex = Overlay.INVENTORY.ordinal },
                         register = { overlayIndex = Overlay.REGISTER.ordinal },
