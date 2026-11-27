@@ -593,3 +593,12 @@ luxueux motif Cœur porte-bonheur » (traduction automatique), et ses lignes n'o
   par affectation directe (1.6.4) est supprimée. Trois méthodes essayées dans l'ordre (frappe execCommand,
   caractère par caractère avec événements clavier, valeur posée), chaque essai relu, et le prix affiché doit
   correspondre à celui de la fiche ; la méthode gagnante est notée (`priceMethod`).
+
+## 1.11.1 (27 novembre) : chasse automatique qui cherche vraiment
+
+Retour : « Il ne cherchait pas » (page « /wholesale/316l-steel-jewelry », aucun champ dans le diagnostic). La
+chasse exigeait un champ de recherche visible et s'arrêtait au premier échec.
+- Champ caché ou absent : toucher la loupe de l'en-tête (`openSearch`), puis repasser par l'accueil du site.
+- Un mot qui échoue est sauté, la chasse continue ; bilan : recherches faites et mots sautés.
+- Mots traduits en anglais quand la page s'affiche en anglais (`Pepites.searchWord` : trèfle → clover,
+  collier → necklace, chapelet → rosary…).

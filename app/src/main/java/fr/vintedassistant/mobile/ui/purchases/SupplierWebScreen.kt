@@ -484,16 +484,26 @@ fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit, initialUrl: Strin
                         try {
                             val words = Pepites.keywords(knowledge!!)
                             if (words.isEmpty()) { status = "Pas encore assez de ventes pour savoir quoi chercher."; return@launch }
+                            // Relevé du 27 novembre : sur une page de catégorie, il n'y a qu'une loupe, pas de champ ;
+                            // la chasse s'arrêtait au premier mot. Désormais : loupe, puis accueil du site, et un mot
+                            // qui échoue n'arrête plus la chasse. Mots traduits si le site s'affiche en anglais.
+                            var searched = 0
+                            val skipped = mutableListOf<String>()
                             for ((i, w) in words.withIndex()) {
-                                progress = "Chasse ${i + 1}/${words.size} : « $w »…"
-                                if (session.web?.js(PepitesScripts.search(w)) != "ok") {
-                                    status = "Champ de recherche introuvable sur cette page : ouvre l'accueil du site, puis relance."
-                                    return@launch
-                                }
+                                val lang = session.web?.js(PepitesScripts.lang).orEmpty()
+                                val q = Pepites.searchWord(w, lang)
+                                progress = "Chasse ${i + 1}/${words.size} : « $q »…"
+                                var r = session.web?.js(PepitesScripts.search(q))
+                                if (r != "ok") { session.web?.js(PepitesScripts.openSearch); delay(900); r = session.web?.js(PepitesScripts.search(q)) }
+                                if (r != "ok") { open(session, HOME); delay(1_500); r = session.web?.js(PepitesScripts.search(Pepites.searchWord(w, session.web?.js(PepitesScripts.lang).orEmpty()))) }
+                                if (r != "ok") { skipped += q; continue }
+                                searched++
                                 delay(5_000)
                                 repeat(5) { runCatching { scanOnce() }; session.web?.js(PepitesScripts.scrollDown); delay(2_000) }
                             }
-                            status = "Chasse terminée : ${found.size} pépite(s) ×$minMultiple et plus. Touche « Pépites »."
+                            status = if (searched == 0) "Recherche impossible sur ce site pour l'instant (aucun champ trouvé, même sur l'accueil). Lance « Diagnostic » sur l'accueil et envoie-le-moi."
+                                else "Chasse terminée : ${found.size} pépite(s) ×$minMultiple et plus, $searched recherche(s)" +
+                                    (if (skipped.isNotEmpty()) ", ${skipped.size} mot(s) sautés (${skipped.joinToString()})" else "") + ". Touche « Pépites »."
                         } catch (e: CancellationException) {
                             status = "Chasse arrêtée : ${found.size} pépite(s) gardée(s)."
                             throw e

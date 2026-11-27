@@ -76,6 +76,22 @@ object Pepites {
         return words.entries.sortedByDescending { it.value }.take(max).map { it.key }
     }
 
+    /** Mots de bijouterie en anglais, pour chercher sur le site quand il s'affiche en anglais. */
+    private val EN = mapOf(
+        "collier" to "necklace", "colliers" to "necklace", "bracelet" to "bracelet", "bracelets" to "bracelet",
+        "chaine" to "chain", "tennis" to "tennis", "croix" to "cross", "pendentif" to "pendant", "trefle" to "clover",
+        "trefles" to "clover", "chapelet" to "rosary", "rosaire" to "rosary", "ange" to "angel", "gardien" to "angel",
+        "cordon" to "string bracelet", "jonc" to "bangle", "gourmette" to "cuban chain", "boucles" to "earrings",
+        "bague" to "ring", "coeur" to "heart", "strass" to "rhinestone", "zircon" to "zircon", "perles" to "beaded",
+        "perle" to "pearl", "medaille" to "medal", "vierge" to "virgin mary", "papillon" to "butterfly", "etoile" to "star",
+        "lune" to "moon", "serpent" to "snake", "maillons" to "link chain", "riviere" to "tennis", "cafe" to "coffee bean",
+        "traverser" to "cross", "romain" to "roman", "porte" to "lucky",
+    )
+
+    /** Mot de recherche dans la langue du site (« en… » : anglais), sinon tel quel. */
+    fun searchWord(word: String, siteLang: String): String =
+        if (siteLang.lowercase().startsWith("en")) EN[StockLedger.normalize(word)] ?: word else word
+
     private val NOISE = setOf(
         "femme", "homme", "unisexe", "acier", "inoxydable", "plaque", "carats", "alliage", "metal", "cuivre", "style", "avec",
         "motif", "incrustation", "incruste", "epaisseur", "piece", "couleur", "taille", "unique", "modele", "veritable", "revetement",

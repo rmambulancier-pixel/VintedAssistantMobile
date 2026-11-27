@@ -63,8 +63,9 @@ object PepitesScripts {
     fun search(keyword: String): String = """
         (function(k){
           const cands=Array.from(document.querySelectorAll('input[type="search"],input[name*="key" i],input[name*="search" i],input[placeholder*="rech" i],input[placeholder*="search" i],input[class*="search" i]'));
-          const e=cands.find(x=>x.offsetParent!==null)||cands[0];
-          if(!e)return 'absent';
+          const e=cands.find(x=>x.offsetParent!==null&&x.getBoundingClientRect().width>20);
+          // Champ absent ou caché (pages de catégorie : seule une loupe est affichée) : l'appelant ouvre la recherche.
+          if(!e)return cands.length?'hidden':'absent';
           e.focus();
           Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,k);
           e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));
@@ -73,6 +74,21 @@ object PepitesScripts {
           if(e.form){if(e.form.requestSubmit)e.form.requestSubmit();else e.form.submit();}
           return 'ok';
         })(${JSONObject.quote(keyword)});
+    """.trimIndent()
+
+    /** Langue de la page (« fr », « en »…), pour traduire les mots cherchés. */
+    val lang: String = "(function(){return (document.documentElement.lang||navigator.language||'').slice(0,5);})();"
+
+    /** Touche la loupe de l'en-tête pour faire apparaître le champ de recherche. */
+    val openSearch: String = """
+        (function(){
+          const els=Array.from(document.querySelectorAll('[class*="search" i],[aria-label*="search" i],[aria-label*="recherch" i],[data-testid*="search" i]'))
+            .filter(x=>x.tagName!=='INPUT'&&x.offsetParent!==null&&x.getBoundingClientRect().top<240);
+          const t=els.find(x=>/^(BUTTON|A|SPAN|I|svg|DIV)$/i.test(x.tagName));
+          if(!t)return 'absent';
+          (t.closest('button,a,[role="button"]')||t).click();
+          return 'ok';
+        })();
     """.trimIndent()
 
     val scrollDown: String = "(function(){window.scrollBy(0,Math.round(innerHeight*0.9));return 'ok';})();"

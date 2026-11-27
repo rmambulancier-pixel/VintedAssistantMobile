@@ -63,3 +63,12 @@ class GrowthTest {
         assertTrue(m.contains("6,50") || m.contains("6,50"))
     }
 }
+
+class PepitesSearchTest {
+    @Test fun `mots traduits pour un site en anglais`() {
+        assertEquals("clover", Pepites.searchWord("trefle", "en-US"))
+        assertEquals("necklace", Pepites.searchWord("collier", "en"))
+        assertEquals("trefle", Pepites.searchWord("trefle", "fr"))
+        assertEquals("tennis", Pepites.searchWord("tennis", "en"))
+    }
+}
