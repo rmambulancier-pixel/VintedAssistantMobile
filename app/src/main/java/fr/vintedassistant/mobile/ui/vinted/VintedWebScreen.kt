@@ -116,6 +116,8 @@ fun VintedWebScreen(
     var diagnostic by remember { mutableStateOf<String?>(null) }
     var reporting by remember { mutableStateOf(false) }
     var filling by remember { mutableStateOf(false) }
+    // Fiche remplie hors série, en attente de « Ajouter » : la nouvelle annonce lui est reliée dès qu'elle s'affiche.
+    var watchPublish by remember { mutableStateOf<Long?>(null) }
     var hidden by remember { mutableStateOf<org.json.JSONObject?>(null) }
     var hiddenSeen by remember { mutableStateOf("") }
     var unknownListings by remember { mutableStateOf<List<fr.vintedassistant.mobile.data.importer.ImportedListing>>(emptyList()) }
@@ -283,7 +285,9 @@ fun VintedWebScreen(
         val priceTries = org.json.JSONArray()
         rec.put("priceTries", priceTries)
         // Trois méthodes de saisie, puis la virgule : chaque essai est relu, et la méthode qui marche est notée.
-        val tries = listOf(dot to 0, dot to 1, dot to 2, dot.replace('.', ',') to 1, dot.replace('.', ',') to 2)
+        rec.put("priceProbe", web.evalJs(VintedPageScripts.priceProbe)?.let { runCatching { org.json.JSONObject(it) }.getOrNull() } ?: org.json.JSONObject.NULL)
+        val comma = dot.replace('.', ',')
+        val tries = listOf(dot to 0, dot to 3, dot to 4, dot to 1, dot to 2, comma to 3, comma to 4, comma to 2)
         for ((v, method) in tries.distinct()) {
             val set = web.evalJs(VintedPageScripts.setPrice(v, method))
             delay(1_000)
@@ -293,6 +297,8 @@ fun VintedWebScreen(
             // Le prix affiché doit correspondre à celui de la fiche (« 9,00 € » pour 9), pas seulement contenir un chiffre.
             if (digits.isNotEmpty() && !shown.contains("NaN", ignoreCase = true) && !shown.contains("ERREUR") &&
                 digits.trimStart('0').startsWith((cents / 100).toString())) { priceOk = true; rec.put("priceMethod", method); break }
+            // Après un échec, portrait du champ pour comprendre ce que le composant a retenu.
+            if (priceTries.length() == 1) rec.put("priceProbeAfter", web.evalJs(VintedPageScripts.priceProbe)?.let { runCatching { org.json.JSONObject(it) }.getOrNull() } ?: org.json.JSONObject.NULL)
         }
         rec.put("package", web.evalJs(VintedPageScripts.packageSmall))
         rec.put("details", details ?: org.json.JSONObject().put("error", "pas de réponse de la page en 90 s"))
@@ -323,6 +329,7 @@ fun VintedWebScreen(
         if (filling) { status = "Remplissage déjà en cours, patiente quelques secondes."; return }
         filling = true
         try { fillInner(a, rotatePhotos, rec, ::finish) } finally { filling = false }
+        if (queue.isEmpty()) watchPublish = a.id
     }
 
     // --- Republication en série : l'application remplit, l'utilisateur touche « Ajouter » puis « Supprimer ». ---
@@ -376,6 +383,34 @@ fun VintedWebScreen(
             status = "Nouvelle annonce enregistrée. Supprime maintenant l'ancienne : menu de l'annonce, puis « Supprimer »."
             session.webView?.loadUrl(old)
         }
+    }
+
+    // Hors série : après « Ajouter », Vinted ouvre la nouvelle annonce ; elle est reliée à la fiche remplie.
+    // Relevé du 27 novembre : collier chapelet doré « En ligne » sans lien, publié après un simple « Remplir ».
+    LaunchedEffect(currentUrl, watchPublish) {
+        val id = watchPublish ?: return@LaunchedEffect
+        if (inSeries) { watchPublish = null; return@LaunchedEffect }
+        val itemId = VintedLinks.itemId(currentUrl) ?: return@LaunchedEffect
+        if (currentUrl.contains("/edit")) return@LaunchedEffect
+        val known = articles.orEmpty().mapNotNull { VintedLinks.itemId(it.vintedUrl) }.toSet()
+        if (itemId in known) return@LaunchedEffect
+        val a = articles.orEmpty().firstOrNull { it.id == id } ?: return@LaunchedEffect
+        // Seulement sa propre annonce (boutons Modifier/Supprimer) et au titre de la fiche.
+        var own = false
+        for (i in 0 until 10) {
+            delay(500)
+            val r = session.webView?.evalJs(VintedPageScripts.ownListing).orEmpty()
+            if (r.startsWith("1|")) {
+                own = fr.vintedassistant.mobile.domain.StockLedger.similarity(r.substringAfter('|'), a.title) >= 0.6
+                break
+            }
+        }
+        if (!own) return@LaunchedEffect
+        watchPublish = null
+        onPublished(a)
+        onLinkArticle(a.id, currentUrl.substringBefore('?'))
+        log(IncidentLog.Kind.PUBLISH, true, "Nouvelle annonce reliée à sa fiche (hors série)")
+        status = "Annonce publiée et reliée à « ${a.title.take(50)} »."
     }
 
     LaunchedEffect(articles != null) {

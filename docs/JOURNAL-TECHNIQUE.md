@@ -602,3 +602,18 @@ chasse exigeait un champ de recherche visible et s'arrêtait au premier échec.
 - Un mot qui échoue est sauté, la chasse continue ; bilan : recherches faites et mots sautés.
 - Mots traduits en anglais quand la page s'affiche en anglais (`Pepites.searchWord` : trèfle → clover,
   collier → necklace, chapelet → rosary…).
+
+## 1.11.2 (27 novembre)
+
+Journal : la republication en série marche de bout en bout (6 fois : fenêtre « Supprimer l'article ? »
+affichée, suppression détectée, nouvelle annonce reliée). Le prix reste le seul point faible : « NaN € » avec
+les trois méthodes, sauf une fois (méthode 2, 8,50 €).
+- Prix : deux méthodes de plus (3 : appel direct du gestionnaire `onChange` du composant ; 4 : frappe complète
+  keydown/keypress/beforeinput/input/keyup), ordre 0, 3, 4, 1, 2 puis virgule. Portrait du champ noté au
+  journal avant et après le premier essai (`priceProbe` : valeur, attributs, gestionnaires du composant).
+  Les cinq méthodes réussissent sur un champ React contrôlé simulé : le composant de Vinted a une
+  particularité que seul ce portrait montrera.
+- « Fiches avec plusieurs ventes » : les ventes annulées ne comptent plus (collier tennis : achat annulé puis
+  revendu, normal).
+- Hors série, après « Remplir » puis « Ajouter », la nouvelle annonce est reliée à sa fiche, seulement si la
+  page est une annonce de l'utilisateur (boutons Modifier/Supprimer) au titre de la fiche.

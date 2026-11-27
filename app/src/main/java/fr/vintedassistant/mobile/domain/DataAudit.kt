@@ -24,7 +24,9 @@ object DataAudit {
         if (soldWithoutSale.isNotEmpty()) {
             out += Finding("Fiches « Vendu » sans vente enregistrée", soldWithoutSale.map { "#${it.id} « ${it.title.take(60)} »" })
         }
-        val multiSales = sales.filter { it.articleId != null }.groupBy { it.articleId!! }.filter { it.value.size > 1 }
+        // Une vente annulée puis une nouvelle vente du même bijou est normale (27 novembre, collier tennis) : seules
+        // les ventes non annulées comptent.
+        val multiSales = sales.filter { it.articleId != null && it.counted }.groupBy { it.articleId!! }.filter { it.value.size > 1 }
         if (multiSales.isNotEmpty()) {
             out += Finding("Fiches avec plusieurs ventes", multiSales.map { (id, list) -> "fiche #$id : ${list.size} ventes" })
         }

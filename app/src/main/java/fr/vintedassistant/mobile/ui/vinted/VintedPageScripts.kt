@@ -344,16 +344,61 @@ object VintedPageScripts {
               e.dispatchEvent(new InputEvent('input',{bubbles:true,data:ch,inputType:'insertText'}));
               e.dispatchEvent(new KeyboardEvent('keyup',{key:ch,code:code,bubbles:true}));
             }
-          }else{
+          }else if(method===2){
             setter.call(e,v);
             e.dispatchEvent(new InputEvent('input',{bubbles:true,data:v,inputType:'insertFromPaste'}));
             e.dispatchEvent(new Event('change',{bubbles:true}));
+          }else if(method===3){
+            // Appel direct du gestionnaire de saisie du composant (propriétés React de l'élément).
+            const k=Object.keys(e).find(x=>x.startsWith('__reactProps'));
+            const p=k&&e[k];
+            if(!p||typeof p.onChange!=='function')return 'pas de gestionnaire';
+            setter.call(e,v);
+            const ev={target:e,currentTarget:e,type:'change',nativeEvent:new InputEvent('input',{data:v}),
+              preventDefault(){},stopPropagation(){},persist(){},isDefaultPrevented(){return false;},isPropagationStopped(){return false;}};
+            p.onChange(ev);
+            if(typeof p.onBlur==='function'){p.onBlur(Object.assign({},ev,{type:'blur'}));}
+            return 'ok';
+          }else{
+            // Frappe complète : keydown, keypress, beforeinput, input, keyup (certains masques de saisie lisent keypress).
+            setter.call(e,'');
+            for(const ch of v){
+              const code=/[0-9]/.test(ch)?'Digit'+ch:(ch===','?'Comma':'Period');
+              const kc=ch.charCodeAt(0);
+              const o={key:ch,code:code,keyCode:kc,which:kc,charCode:kc,bubbles:true,cancelable:true};
+              const down=e.dispatchEvent(new KeyboardEvent('keydown',o));
+              const press=e.dispatchEvent(new KeyboardEvent('keypress',o));
+              const before=e.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,data:ch,inputType:'insertText'}));
+              if(down&&press&&before){setter.call(e,(e.value||'')+ch);}
+              e.dispatchEvent(new InputEvent('input',{bubbles:true,data:ch,inputType:'insertText'}));
+              e.dispatchEvent(new KeyboardEvent('keyup',o));
+            }
           }
           e.blur();e.dispatchEvent(new FocusEvent('blur',{bubbles:false}));e.dispatchEvent(new FocusEvent('focusout',{bubbles:true}));
           return 'ok';
         })($v,$method);
         """.trimIndent()
     }
+
+    /**
+     * Portrait du champ prix (sans contenu personnel) : valeur affichée, attributs, gestionnaires d'événements du
+     * composant. Noté dans le journal pour comprendre pourquoi Vinted lit « NaN ».
+     */
+    val priceProbe: String = """
+        (function(){
+          const e=document.getElementById('price')||document.querySelector('[data-testid="price-input--input"]');
+          if(!e)return JSON.stringify({absent:true});
+          const k=Object.keys(e).find(x=>x.startsWith('__reactProps'));
+          const p=k?e[k]:null;
+          return JSON.stringify({value:e.value,type:e.type,inputMode:e.inputMode,maxLength:e.maxLength,pattern:e.pattern||'',
+            placeholder:e.placeholder||'',testid:e.getAttribute('data-testid')||'',
+            handlers:p?Object.keys(p).filter(x=>/^on/.test(x)):[],valueProp:p&&('value' in p)?String(p.value):null});
+        })();
+    """.trimIndent()
+
+    /** « 1|titre » sur une annonce de l'utilisateur (boutons Modifier ou Supprimer présents), « 0|… » sinon. */
+    val ownListing: String = "(function(){const own=!!document.querySelector('[data-testid=\"item-edit-button\"],[data-testid=\"item-delete-button\"]');" +
+        "const h=document.querySelector('h1');return (own?'1':'0')+'|'+((h&&h.innerText)||document.title||'').slice(0,200);})();"
 
     /** Valeur affichée du prix, suivie de « |ERREUR » si Vinted affiche un message d'erreur sous le champ. */
     val readPrice: String = "(function(){const e=document.getElementById('price');if(!e)return 'absent';" +
