@@ -282,12 +282,17 @@ fun VintedWebScreen(
         var priceOk = false
         val priceTries = org.json.JSONArray()
         rec.put("priceTries", priceTries)
-        for (v in listOf(dot, dot.replace('.', ','), dot)) {
-            val set = web.evalJs(VintedPageScripts.setPrice(v))
-            delay(900)
+        // Trois méthodes de saisie, puis la virgule : chaque essai est relu, et la méthode qui marche est notée.
+        val tries = listOf(dot to 0, dot to 1, dot to 2, dot.replace('.', ',') to 1, dot.replace('.', ',') to 2)
+        for ((v, method) in tries.distinct()) {
+            val set = web.evalJs(VintedPageScripts.setPrice(v, method))
+            delay(1_000)
             val shown = web.evalJs(VintedPageScripts.readPrice).orEmpty()
-            priceTries.put(org.json.JSONObject().put("typed", v).put("set", set ?: "").put("shown", shown))
-            if (shown.any { it.isDigit() } && !shown.contains("NaN", ignoreCase = true) && !shown.contains("ERREUR")) { priceOk = true; break }
+            priceTries.put(org.json.JSONObject().put("typed", v).put("method", method).put("set", set ?: "").put("shown", shown))
+            val digits = shown.filter { it.isDigit() }
+            // Le prix affiché doit correspondre à celui de la fiche (« 9,00 € » pour 9), pas seulement contenir un chiffre.
+            if (digits.isNotEmpty() && !shown.contains("NaN", ignoreCase = true) && !shown.contains("ERREUR") &&
+                digits.trimStart('0').startsWith((cents / 100).toString())) { priceOk = true; rec.put("priceMethod", method); break }
         }
         rec.put("package", web.evalJs(VintedPageScripts.packageSmall))
         rec.put("details", details ?: org.json.JSONObject().put("error", "pas de réponse de la page en 90 s"))

@@ -795,4 +795,21 @@ class RepositoryTest {
         assertEquals(noir.id, repo.getArticle(b)!!.purchaseItemId)
         assertEquals(bleu.landedUnitCents, repo.getArticle(a)!!.costCents)
     }
+
+    /** Liste « À acheter plus tard » : un même lien n'est gardé qu'une fois ; acheté puis retiré. */
+    @Test
+    fun wishlistKeepsOnceThenBoughtThenRemoved() = runBlocking {
+        val wishes = WishRepository(db, photoStore = null, clock = { now })
+        val w = fr.vintedassistant.mobile.data.local.WishEntity(
+            title = "Bracelet trèfle", url = "https://www.nihaojewelry.com/p/1", priceCents = 45, costCents = 50,
+            saleCents = 700, multiple = 14.0, savedAt = 0,
+        )
+        assertTrue(wishes.keep(w))
+        assertTrue(!wishes.keep(w))
+        val saved = wishes.items.first().single()
+        wishes.setBought(saved.id, true)
+        assertEquals(now, wishes.items.first().single().boughtAt)
+        wishes.remove(saved.id)
+        assertTrue(wishes.items.first().isEmpty())
+    }
 }

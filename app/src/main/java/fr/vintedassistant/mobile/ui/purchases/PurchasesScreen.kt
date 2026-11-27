@@ -56,9 +56,11 @@ fun PurchasesScreen(
     onOpenSupplier: () -> Unit,
     onOpenArticle: (Long) -> Unit,
     onMessage: (String) -> Unit,
+    onOpenWishlist: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val repo = context.container().purchaseRepository
+    val wishes by context.container().wishes.items.collectAsStateWithLifecycle(initialValue = emptyList())
     val orders by repo.orders.collectAsStateWithLifecycle(initialValue = null)
     val scope = rememberCoroutineScope()
     var linkFor by remember { mutableStateOf<PurchaseItem?>(null) }
@@ -231,6 +233,11 @@ fun PurchasesScreen(
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onOpenSupplier, modifier = Modifier.weight(1f)) { Text("Importer de Nihaojewelry") }
                 OutlinedButton(onClick = { manual = true }, modifier = Modifier.weight(1f)) { Text("Achat à la main") }
+            }
+        }
+        item {
+            OutlinedButton(onClick = onOpenWishlist, modifier = Modifier.fillMaxWidth()) {
+                Text("★ À acheter plus tard (${wishes.count { it.boughtAt == null }})")
             }
         }
         val list = orders

@@ -34,7 +34,7 @@ object PepitesScripts {
             const name=(img.alt&&img.alt.length>=12?img.alt:'')||(link&&link.title)||lines.sort((a,b)=>b.length-a.length)[0]||'';
             if(!name)continue;
             if(!hit.card.dataset.vb)hit.card.dataset.vb=String(++window.__vbSeq);
-            out.push({id:hit.card.dataset.vb,name:name.slice(0,200),price:(hit.m[1]||hit.m[2]).replace(',','.'),href:link?link.href:''});
+            out.push({id:hit.card.dataset.vb,name:name.slice(0,200),price:(hit.m[1]||hit.m[2]).replace(',','.'),href:link?link.href:'',image:img.currentSrc||img.src||''});
             if(out.length>=150)break;
           }
           return JSON.stringify(out);

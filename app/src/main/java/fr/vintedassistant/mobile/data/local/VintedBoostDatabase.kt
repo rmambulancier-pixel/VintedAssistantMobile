@@ -26,6 +26,7 @@ import androidx.room.RoomDatabase
     entities = [
         ArticleEntity::class, PhotoEntity::class, SaleEntity::class, ListingEventEntity::class,
         VintedNotificationEntity::class, PurchaseOrderEntity::class, PurchaseItemEntity::class,
+        WishEntity::class,
     ],
     version = VintedBoostDatabase.VERSION,
     exportSchema = true,
@@ -35,6 +36,8 @@ import androidx.room.RoomDatabase
         AutoMigration(from = 5, to = 6),
         AutoMigration(from = 6, to = 7),
         AutoMigration(from = 7, to = 8),
+        // 9 : liste des pépites gardées pour un achat plus tard.
+        AutoMigration(from = 8, to = 9),
     ],
 )
 abstract class VintedBoostDatabase : RoomDatabase() {
@@ -44,10 +47,11 @@ abstract class VintedBoostDatabase : RoomDatabase() {
     abstract fun listingEventDao(): ListingEventDao
     abstract fun vintedNotificationDao(): VintedNotificationDao
     abstract fun purchaseDao(): PurchaseDao
+    abstract fun wishDao(): WishDao
 
     companion object {
         const val FILE_NAME = "vinted_boost.db"
-        const val VERSION = 8
+        const val VERSION = 9
 
         fun create(context: Context, name: String? = FILE_NAME): VintedBoostDatabase {
             val builder = if (name == null) {

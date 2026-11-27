@@ -311,30 +311,47 @@ object VintedPageScripts {
         })($fields);
     """.trimIndent()
 
-    /** Saisit le prix (champ `#price`) et renvoie ce que Vinted affiche ensuite, pour vérifier qu'il l'a compris. */
-    fun setPrice(value: String): String {
+    /**
+     * Saisit le prix (champ `#price`) selon une des trois méthodes, de la plus naturelle à la plus directe :
+     * 0. sélection du contenu, effacement puis frappe (execCommand), comme au clavier ;
+     * 1. frappe caractère par caractère avec les événements clavier et de saisie ;
+     * 2. valeur posée directement, puis événements input/change/blur.
+     * Relevé du 27 novembre : « NaN € » une fois sur deux avec la seule méthode utilisée jusque-là, qui vidait
+     * d'abord le champ en posant une valeur vide (le composant de Vinted la lit comme « NaN »).
+     */
+    fun setPrice(value: String, method: Int = 0): String {
         val v = JSONObject.quote(value)
         return """
-        (function(v){
+        (function(v,method){
           const e=document.getElementById('price')||document.querySelector('[data-testid="price-input--input"]');
           if(!e)return 'absent';
-          // Champ vidé d'abord : un « NaN € » laissé par un essai précédent faussait la saisie suivante.
           const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
-          e.focus();
-          setter.call(e,'');e.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'deleteContentBackward'}));
-          // Saisie « comme au clavier » : React enregistre la valeur (la simple affectation pouvait rester affichée
-          // sans être prise en compte, d'où « Le champ prix doit être supérieur ou égal à 1.0 »).
-          e.select();
-          let typed=false;
-          try{typed=document.execCommand('selectAll',false,null)&&document.execCommand('insertText',false,v);}catch(x){typed=false;}
-          if(!typed||e.value.replace(/[^0-9]/g,'')===''){
-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,v);
-            e.dispatchEvent(new InputEvent('input',{bubbles:true,data:v,inputType:'insertText'}));
+          e.scrollIntoView({block:'center'});
+          e.focus();e.click();
+          if(method===0){
+            e.setSelectionRange(0,(e.value||'').length);
+            try{document.execCommand('delete',false,null);}catch(x){}
+            let ok=false;try{ok=document.execCommand('insertText',false,v);}catch(x){ok=false;}
+            if(!ok)return 'execCommand refusé';
+          }else if(method===1){
+            e.setSelectionRange(0,(e.value||'').length);
+            try{document.execCommand('delete',false,null);}catch(x){}
+            for(const ch of v){
+              const code=/[0-9]/.test(ch)?'Digit'+ch:(ch===','?'Comma':'Period');
+              e.dispatchEvent(new KeyboardEvent('keydown',{key:ch,code:code,bubbles:true}));
+              e.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,data:ch,inputType:'insertText'}));
+              setter.call(e,(e.value||'')+ch);
+              e.dispatchEvent(new InputEvent('input',{bubbles:true,data:ch,inputType:'insertText'}));
+              e.dispatchEvent(new KeyboardEvent('keyup',{key:ch,code:code,bubbles:true}));
+            }
+          }else{
+            setter.call(e,v);
+            e.dispatchEvent(new InputEvent('input',{bubbles:true,data:v,inputType:'insertFromPaste'}));
             e.dispatchEvent(new Event('change',{bubbles:true}));
           }
-          e.blur();e.dispatchEvent(new Event('blur',{bubbles:true}));e.dispatchEvent(new FocusEvent('focusout',{bubbles:true}));
+          e.blur();e.dispatchEvent(new FocusEvent('blur',{bubbles:false}));e.dispatchEvent(new FocusEvent('focusout',{bubbles:true}));
           return 'ok';
-        })($v);
+        })($v,$method);
         """.trimIndent()
     }
 

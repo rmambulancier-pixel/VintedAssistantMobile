@@ -16,6 +16,7 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,6 +33,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -269,11 +271,11 @@ private suspend fun importCurrent(session: Session, repo: PurchaseRepository): P
 }
 
 /** Bijou repéré chez le fournisseur avec une estimation au-dessus du seuil choisi. */
-private data class Nugget(val name: String, val href: String, val priceCents: Long, val estimate: Pepites.Estimate)
+private data class Nugget(val name: String, val href: String, val priceCents: Long, val estimate: Pepites.Estimate, val image: String = "")
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit) {
+fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit, initialUrl: String? = null, onOpenWishlist: () -> Unit = {}) {
     val context = LocalContext.current
     val repo = context.container().purchaseRepository
     val session = remember { Session() }
@@ -289,6 +291,8 @@ fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit) {
     var knowledge by remember { mutableStateOf<Pepites.Knowledge?>(null) }
     val found = remember { androidx.compose.runtime.mutableStateMapOf<String, Nugget>() }
     var showNuggets by remember { mutableStateOf(false) }
+    val wishList by context.container().wishes.items.collectAsState(initial = emptyList())
+    val keptUrls = remember(wishList) { wishList.map { it.url }.toSet() }
     var minMultiple by rememberSaveable { mutableStateOf(10) }
     LaunchedEffect(Unit) {
         val c = context.container()
@@ -310,7 +314,7 @@ fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit) {
             val color = when { m == null -> "#777777"; m >= minMultiple -> "#1b8a3a"; m >= minMultiple / 2.0 -> "#c77700"; else -> "#b3261e" }
             badges.put(org.json.JSONObject().put("id", o.optString("id")).put("text", Pepites.badge(e)).put("color", color))
             val href = o.optString("href")
-            if (m != null && m >= minMultiple && href.isNotBlank()) found[href] = Nugget(name, href, price, e)
+            if (m != null && m >= minMultiple && href.isNotBlank()) found[href] = Nugget(name, href, price, e, o.optString("image"))
         }
         if (badges.length() > 0) session.web?.js(PepitesScripts.paint(badges))
         return list.length()
@@ -331,15 +335,33 @@ fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit) {
                 Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     if (list.isEmpty()) Text("Aucune pour l'instant. Parcours le site ou lance la chasse automatique.")
                     list.forEach { n ->
-                        TextButton(onClick = { showNuggets = false; session.web?.loadUrl(n.href) }) {
+                        // Ligne entière cliquable (ouvre le bijou) ; « Garder » le met dans la liste d'achats.
+                        Column(
+                            Modifier.fillMaxWidth().clickable { showNuggets = false; session.web?.loadUrl(n.href) }.padding(vertical = 6.dp),
+                        ) {
+                            Text("${Pepites.badge(n.estimate)}  ${n.name.take(80)}", style = MaterialTheme.typography.bodyMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                             Text(
-                                "${Pepites.badge(n.estimate)}  ${n.name.take(70)}\n" +
-                                    "Revient à ${euros(n.estimate.costCents)}, se vend vers ${euros(n.estimate.saleCents ?: 0)}" +
+                                "Revient à ${euros(n.estimate.costCents)}, se vend vers ${euros(n.estimate.saleCents ?: 0)}" +
                                     (if (n.estimate.basis == Pepites.Basis.MODEL) " (${n.estimate.soldSimilar} ventes de modèles proches" +
                                         (n.estimate.averageDays?.let { ", en ${it.toInt()} j" } ?: "") + ")" else " (prix habituel de ce type de bijou)"),
                                 style = MaterialTheme.typography.bodySmall,
                             )
+                            val kept = n.href in keptUrls
+                            TextButton(enabled = !kept, onClick = {
+                                scope.launch {
+                                    val ok = context.container().wishes.keep(
+                                        fr.vintedassistant.mobile.data.local.WishEntity(
+                                            title = n.name.take(200), url = n.href, imageUrl = n.image, priceCents = n.priceCents,
+                                            costCents = n.estimate.costCents, saleCents = n.estimate.saleCents, multiple = n.estimate.multiple,
+                                            basis = if (n.estimate.basis == Pepites.Basis.MODEL) "${n.estimate.soldSimilar} ventes de modèles proches" else "prix habituel du type",
+                                            savedAt = 0,
+                                        ),
+                                    )
+                                    status = if (ok) "Gardé dans « À acheter plus tard »." else "Déjà dans ta liste."
+                                }
+                            }) { Text(if (kept) "Dans ma liste ✓" else "★ Garder pour plus tard") }
                         }
+                        androidx.compose.material3.HorizontalDivider()
                     }
                 }
             },
@@ -456,6 +478,7 @@ fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit) {
             }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Button(onClick = { showNuggets = true }) { Text("Pépites (${found.size})") }
+                OutlinedButton(onClick = onOpenWishlist) { Text("Ma liste (${wishList.count { it.boughtAt == null }})") }
                 OutlinedButton(enabled = job == null && knowledge != null, onClick = {
                     job = scope.launch {
                         try {
@@ -517,7 +540,7 @@ fun SupplierWebScreen(modifier: Modifier, onClose: () -> Unit) {
                         }
                     }
                     session.web = this
-                    loadUrl(HOME)
+                    loadUrl(initialUrl ?: HOME)
                 }
             },
         )

@@ -75,6 +75,7 @@ private enum class Overlay(val title: String) {
     NONE(""), SETTINGS("Réglages"), ACTIVITY("Activité Vinted"), VINTED("Vinted intégré (bêta)"),
     PURCHASES("Achats fournisseur"), SUPPLIER("Nihaojewelry"), EXPRESS("Mise en vente express"), INVENTORY("Inventaire"),
     REGISTER("Registre du stock"), SHEET("Fiche stock"), GROWTH("Gagner plus"),
+    WISHLIST("À acheter plus tard"),
 }
 
 /**
@@ -198,6 +199,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
     }
     val tab = Tab.entries[tabIndex]
     val unread = notices.count { !it.handled }
+    var supplierUrl by remember { mutableStateOf<String?>(null) }
     // Contrôle de cohérence : refait à chaque changement des fiches, ventes ou achats. Les points jugés corrects
     // par l'utilisateur (« ne plus signaler ») sont gardés dans les préférences.
     val appContext = androidx.compose.ui.platform.LocalContext.current
@@ -294,6 +296,7 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                 modifier = modifier,
                 onOpenSupplier = { overlayIndex = Overlay.SUPPLIER.ordinal },
                 onOpenArticle = { close(); openEditor(it) },
+                onOpenWishlist = { overlayIndex = Overlay.WISHLIST.ordinal },
                 onMessage = vm::show,
             )
             Overlay.REGISTER -> fr.vintedassistant.mobile.ui.screens.StockRegisterScreen(
@@ -336,7 +339,16 @@ fun AppRoot(initialTab: Tab = Tab.HOME, tabRequest: Int = 0, sharedLink: String?
                 onOpenSupplier = { overlayIndex = Overlay.SUPPLIER.ordinal },
                 onMessage = vm::show,
             )
-            Overlay.SUPPLIER -> SupplierWebScreen(modifier = modifier, onClose = { overlayIndex = Overlay.PURCHASES.ordinal })
+            Overlay.SUPPLIER -> SupplierWebScreen(
+                modifier = modifier,
+                onClose = { supplierUrl = null; overlayIndex = Overlay.PURCHASES.ordinal },
+                initialUrl = supplierUrl,
+                onOpenWishlist = { overlayIndex = Overlay.WISHLIST.ordinal },
+            )
+            Overlay.WISHLIST -> fr.vintedassistant.mobile.ui.purchases.WishlistScreen(
+                modifier = modifier,
+                onOpen = { url -> supplierUrl = url; overlayIndex = Overlay.SUPPLIER.ordinal },
+            )
             Overlay.VINTED -> VintedWebScreen(
                 articles = articles,
                 initialArticleId = vintedArticle,

@@ -580,3 +580,16 @@ luxueux motif Cœur porte-bonheur » (traduction automatique), et ses lignes n'o
 - En mode « choisir la bonne ligne » : titre « Quel coloris est ce bijou ? », chaque ligne affichée par son
   coloris et son code NH, avec la photo du vrai bijou qui tient la pièce (ou d'une autre fiche du modèle).
 - En-tête : le nom fournisseur est signalé comme traduction automatique.
+
+## 1.11.0 (27 novembre) : liste « À acheter plus tard » et prix
+
+- **Pépites gardées** : table `wish_items` (base v9, migration automatique 8 → 9), `WishRepository`. Dans
+  « Pépites », chaque bijou a « ★ Garder pour plus tard » ; la photo est téléchargée tout de suite (le lien
+  d'image du fournisseur peut expirer) dans le dossier photos, donc incluse dans les sauvegardes. Écran
+  « À acheter plus tard » (depuis Achats fournisseur et depuis Nihaojewelry) : photo, multiple, coût,
+  revente estimée, « Ouvrir » (page du bijou dans Nihaojewelry intégré), « Acheté », « Retirer », budget total.
+- Liste des pépites : lignes entières cliquables ; le début du texte n'est plus rogné.
+- **Prix (seul bug restant du journal : 9 sur 21)** : « NaN € » une fois sur deux. La remise à vide du champ
+  par affectation directe (1.6.4) est supprimée. Trois méthodes essayées dans l'ordre (frappe execCommand,
+  caractère par caractère avec événements clavier, valeur posée), chaque essai relu, et le prix affiché doit
+  correspondre à celui de la fiche ; la méthode gagnante est notée (`priceMethod`).
