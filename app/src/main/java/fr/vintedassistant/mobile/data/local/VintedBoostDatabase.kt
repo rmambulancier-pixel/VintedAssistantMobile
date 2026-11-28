@@ -21,12 +21,14 @@ import androidx.room.RoomDatabase
  * - v6 (0.7.0) : achats fournisseur et coût de revient.
  * - v7 (0.9.0) : code produit fournisseur, commande reçue ou en cours de livraison.
  * - v8 (0.19.0) : pièces commandées jamais reçues.
+ * - v9 (1.11.0) : pépites gardées pour plus tard.
+ * - v10 (1.12.0) : fournitures (pochettes, matériel), hors stock à vendre.
  */
 @Database(
     entities = [
         ArticleEntity::class, PhotoEntity::class, SaleEntity::class, ListingEventEntity::class,
         VintedNotificationEntity::class, PurchaseOrderEntity::class, PurchaseItemEntity::class,
-        WishEntity::class,
+        WishEntity::class, SupplyEntity::class,
     ],
     version = VintedBoostDatabase.VERSION,
     exportSchema = true,
@@ -38,6 +40,8 @@ import androidx.room.RoomDatabase
         AutoMigration(from = 7, to = 8),
         // 9 : liste des pépites gardées pour un achat plus tard.
         AutoMigration(from = 8, to = 9),
+        // 10 : fournitures.
+        AutoMigration(from = 9, to = 10),
     ],
 )
 abstract class VintedBoostDatabase : RoomDatabase() {
@@ -48,10 +52,11 @@ abstract class VintedBoostDatabase : RoomDatabase() {
     abstract fun vintedNotificationDao(): VintedNotificationDao
     abstract fun purchaseDao(): PurchaseDao
     abstract fun wishDao(): WishDao
+    abstract fun supplyDao(): SupplyDao
 
     companion object {
         const val FILE_NAME = "vinted_boost.db"
-        const val VERSION = 9
+        const val VERSION = 10
 
         fun create(context: Context, name: String? = FILE_NAME): VintedBoostDatabase {
             val builder = if (name == null) {

@@ -136,7 +136,7 @@ fun DashboardScreen(
         }
         item {
             val top = remember(sales, stock, contributionRateBp) { Charts.topProducts(stock, sales, contributionRateBp) }
-            TopProductsCard(top, stats.totalNetCents, restock, onOpenPurchases)
+            TopProductsCard(top, stats.totalNetCents + stats.totalSuppliesCents, restock, onOpenPurchases)
         }
         if (stats.categories.isNotEmpty()) item { CategoryDonut(stats.categories) }
         if (board != null) item { StockBar(board, stats.potentialMarginCents, stats.stagnant.size, onOpenStock) }

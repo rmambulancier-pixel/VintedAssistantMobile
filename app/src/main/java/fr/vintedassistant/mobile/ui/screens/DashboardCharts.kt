@@ -166,7 +166,8 @@ fun HeroCard(stats: DashboardStats, goalEuros: Int, sales: List<fr.vintedassista
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(on.copy(alpha = 0.15f)))
             Text(
-                "Depuis le début : ${stats.totalSalesCount} ventes • ${Money.formatEuros(stats.totalRevenueCents)} • ${Money.formatEuros(stats.totalNetCents)} de bénéfice",
+                "Depuis le début : ${stats.totalSalesCount} ventes • ${Money.formatEuros(stats.totalRevenueCents)} • ${Money.formatEuros(stats.totalNetCents)} de bénéfice" +
+                    (if (stats.totalSuppliesCents > 0) " (fournitures déduites : ${Money.formatEuros(stats.totalSuppliesCents)})" else ""),
                 style = MaterialTheme.typography.labelMedium, color = on.copy(alpha = 0.8f),
             )
         }

@@ -29,6 +29,30 @@ class FiscalTest {
 
     @Test fun `registre des achats`() {
         val csv = Fiscal.purchasesCsv(listOf(Fiscal.Purchase(LocalDate.of(2026, 11, 7), "Nihaojewelry", "NHFR1", 4436, 1000, 0, 11)), 2026)
-        assertTrue(csv.contains("\"07/11/2026\";\"Nihaojewelry\";\"NHFR1\";11;44,36;10,00;0,00;54,36"))
+        assertTrue(csv.contains("\"07/11/2026\";\"Nihaojewelry\";\"Marchandises\";\"\";\"NHFR1\";11;44,36;10,00;0,00;54,36"))
+    }
+
+    @Test fun `fournitures au registre des achats`() {
+        val bubbles = Supply(1, at(2026, 11, 20), "Pochettes à bulles 13×15", SupplyKind.PACKAGING, "Nihaojewelry", 30, 284, perParcel = true)
+        val csv = Fiscal.purchasesCsv(listOf(Fiscal.supplyLine(bubbles)), 2026)
+        assertTrue(csv.contains("\"20/11/2026\";\"Nihaojewelry\";\"Fournitures\";\"Pochettes à bulles 13×15 (emballage et envoi)\";\"\";30;2,84;0,00;0,00;2,84"))
+    }
+
+    @Test fun `stock de pochettes estimé par les ventes`() {
+        val first = Supply(1, at(2026, 11, 20), "Pochettes à bulles", SupplyKind.PACKAGING, "", 30, 284, perParcel = true)
+        val again = first.copy(id = 2, boughtAt = at(2026, 11, 25), label = "pochettes a bulles", quantity = 10, amountCents = 100)
+        val label = Supply(3, at(2026, 11, 1), "Ruban", SupplyKind.PACKAGING, "", 1, 300, perParcel = false)
+        val sales = (1..6).map { sale(it.toLong(), at(2026, 11, 22), 700) } + sale(50, at(2026, 11, 10), 700) +
+            sale(51, at(2026, 11, 23), 700, ShippingStatus.CANCELLED)
+        val stocks = Supplies.stocks(listOf(first, again, label), sales)
+        assertEquals(1, stocks.size)
+        assertEquals(40, stocks[0].bought)
+        assertEquals(6, stocks[0].used)
+        assertEquals(34, stocks[0].remaining)
+        assertEquals(10L, stocks[0].unitCents)
+        assertEquals(null, Supplies.alert(stocks))
+        val empty = Supplies.stocks(listOf(first.copy(quantity = 4)), sales)
+        assertEquals(0, empty[0].remaining)
+        assertTrue(Supplies.alert(empty)!!.contains("plus rien"))
     }
 }

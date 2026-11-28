@@ -400,6 +400,44 @@ object VintedPageScripts {
     val ownListing: String = "(function(){const own=!!document.querySelector('[data-testid=\"item-edit-button\"],[data-testid=\"item-delete-button\"]');" +
         "const h=document.querySelector('h1');return (own?'1':'0')+'|'+((h&&h.innerText)||document.title||'').slice(0,200);})();"
 
+    /**
+     * Saisie du prix en trois temps séparés par des pauses (focus, frappe, sortie du champ). Le composant de Vinted
+     * reformate la valeur à la prise de focus puis à la sortie (« 9,00 € ») : tout faire dans le même instant laisse
+     * son état interne sur l'ancienne valeur, d'où « NaN € » ; et une fois « NaN € » affiché, chaque essai s'y ajoutait.
+     * [phase] : focus, type (valeur [value]), blur. Renvoie la valeur affichée après l'étape.
+     */
+    fun priceStep(phase: String, value: String = ""): String {
+        val v = JSONObject.quote(value)
+        val ph = JSONObject.quote(phase)
+        return """
+        (function(phase,v){
+          const e=document.getElementById('price')||document.querySelector('[data-testid="price-input--input"]');
+          if(!e)return 'absent';
+          const k=Object.keys(e).find(x=>x.startsWith('__reactProps'));
+          const p=k?e[k]:null;
+          const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
+          const ev=(type)=>({target:e,currentTarget:e,type:type,nativeEvent:new Event(type),
+            preventDefault(){},stopPropagation(){},persist(){},isDefaultPrevented(){return false;},isPropagationStopped(){return false;}});
+          if(phase==='focus'){
+            e.scrollIntoView({block:'center'});
+            e.focus();
+            if(document.activeElement!==e&&p&&typeof p.onFocus==='function')p.onFocus(ev('focus'));
+          }else if(phase==='type'){
+            if(document.activeElement!==e)e.focus();
+            e.setSelectionRange&&e.setSelectionRange(0,(e.value||'').length);
+            setter.call(e,v);
+            e.dispatchEvent(new InputEvent('input',{bubbles:true,data:v,inputType:'insertText'}));
+            // Si React n'a pas repris la valeur (événement ignoré), appel direct de son gestionnaire.
+            if(e.value!==v&&p&&typeof p.onChange==='function'){setter.call(e,v);p.onChange(ev('change'));}
+          }else{
+            e.blur();
+            e.dispatchEvent(new FocusEvent('focusout',{bubbles:true}));
+          }
+          return e.value;
+        })($ph,$v);
+        """.trimIndent()
+    }
+
     /** Valeur affichée du prix, suivie de « |ERREUR » si Vinted affiche un message d'erreur sous le champ. */
     val readPrice: String = "(function(){const e=document.getElementById('price');if(!e)return 'absent';" +
         "const box=e.closest('[class*=\"input\"]')&&e.closest('[class*=\"input\"]').parentElement;" +

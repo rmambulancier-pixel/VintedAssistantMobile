@@ -284,19 +284,46 @@ fun VintedWebScreen(
         var priceOk = false
         val priceTries = org.json.JSONArray()
         rec.put("priceTries", priceTries)
-        // Trois méthodes de saisie, puis la virgule : chaque essai est relu, et la méthode qui marche est notée.
+        // Chaque essai est relu, et la méthode qui marche est notée.
         rec.put("priceProbe", web.evalJs(VintedPageScripts.priceProbe)?.let { runCatching { org.json.JSONObject(it) }.getOrNull() } ?: org.json.JSONObject.NULL)
         val comma = dot.replace('.', ',')
-        val tries = listOf(dot to 0, dot to 3, dot to 4, dot to 1, dot to 2, comma to 3, comma to 4, comma to 2)
-        for ((v, method) in tries.distinct()) {
-            val set = web.evalJs(VintedPageScripts.setPrice(v, method))
-            delay(1_000)
-            val shown = web.evalJs(VintedPageScripts.readPrice).orEmpty()
-            priceTries.put(org.json.JSONObject().put("typed", v).put("method", method).put("set", set ?: "").put("shown", shown))
+        // Journal du 28/11 : une fois « NaN € » affiché, chaque essai s'ajoute à ce texte ; les seules réussites ont
+        // suivi un essai qui avait vidé le champ. Chaque essai part donc d'un champ vidé et relu vide.
+        suspend fun clearPrice(): String {
+            var shown = web.evalJs(VintedPageScripts.readPrice).orEmpty()
+            var n = 0
+            while (shown.isNotEmpty() && n < 3) {
+                web.evalJs(VintedPageScripts.setPrice("", 2)); delay(700)
+                shown = web.evalJs(VintedPageScripts.readPrice).orEmpty()
+                if (shown.isNotEmpty()) {
+                    web.evalJs(VintedPageScripts.priceStep("focus")); delay(350)
+                    web.evalJs(VintedPageScripts.priceStep("type", "")); delay(350)
+                    web.evalJs(VintedPageScripts.priceStep("blur")); delay(700)
+                    shown = web.evalJs(VintedPageScripts.readPrice).orEmpty()
+                }
+                n++
+            }
+            return shown
+        }
+        fun good(shown: String): Boolean {
             val digits = shown.filter { it.isDigit() }
             // Le prix affiché doit correspondre à celui de la fiche (« 9,00 € » pour 9), pas seulement contenir un chiffre.
-            if (digits.isNotEmpty() && !shown.contains("NaN", ignoreCase = true) && !shown.contains("ERREUR") &&
-                digits.trimStart('0').startsWith((cents / 100).toString())) { priceOk = true; rec.put("priceMethod", method); break }
+            return digits.isNotEmpty() && !shown.contains("NaN", ignoreCase = true) && !shown.contains("ERREUR") &&
+                digits.trimStart('0').startsWith((cents / 100).toString())
+        }
+        // Méthode 5 : saisie en trois temps (focus, frappe, sortie) avec des pauses ; puis les anciennes méthodes.
+        val tries = listOf(comma to 5, dot to 5, comma to 2, dot to 2, comma to 3, dot to 0, comma to 4, dot to 1)
+        for ((v, method) in tries.distinct()) {
+            val before = clearPrice()
+            val set = if (method == 5) {
+                web.evalJs(VintedPageScripts.priceStep("focus")); delay(400)
+                web.evalJs(VintedPageScripts.priceStep("type", v)); delay(400)
+                web.evalJs(VintedPageScripts.priceStep("blur")).orEmpty()
+            } else web.evalJs(VintedPageScripts.setPrice(v, method))
+            delay(1_000)
+            val shown = web.evalJs(VintedPageScripts.readPrice).orEmpty()
+            priceTries.put(org.json.JSONObject().put("typed", v).put("method", method).put("before", before).put("set", set ?: "").put("shown", shown))
+            if (good(shown)) { priceOk = true; rec.put("priceMethod", method); break }
             // Après un échec, portrait du champ pour comprendre ce que le composant a retenu.
             if (priceTries.length() == 1) rec.put("priceProbeAfter", web.evalJs(VintedPageScripts.priceProbe)?.let { runCatching { org.json.JSONObject(it) }.getOrNull() } ?: org.json.JSONObject.NULL)
         }

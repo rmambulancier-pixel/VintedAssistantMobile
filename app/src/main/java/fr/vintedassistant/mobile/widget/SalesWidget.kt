@@ -62,7 +62,7 @@ class SalesWidget : AppWidgetProvider() {
             val sales = c.articleRepository.sales.first()
             val orders = c.purchaseRepository.orders.first()
             val now = System.currentTimeMillis()
-            val dash = computeDashboard(articles, sales, settings.dashboard, now)
+            val dash = computeDashboard(articles, sales, settings.dashboard, now, supplies = c.supplies.items.first())
             val board = StockBoard.build(StockLedger.build(orders, articles), sales)
             val dues = sales.mapNotNull { ShippingDeadline.due(it, now) }
             val undated = sales.count { it.shippingStatus == ShippingStatus.TO_SHIP && !it.dateKnown }

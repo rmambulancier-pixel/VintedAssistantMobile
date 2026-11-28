@@ -42,6 +42,9 @@ data class DashboardStats(
     val undatedSalesCount: Int = 0,
     /** Articles (en stock ou vendus) dont le coût d'achat n'est pas renseigné. */
     val missingCostCount: Int = 0,
+    /** Fournitures achetées ce mois-ci et depuis le début : déjà retirées des bénéfices nets ci-dessus. */
+    val monthSuppliesCents: Long = 0,
+    val totalSuppliesCents: Long = 0,
 )
 
 data class DashboardSettings(
@@ -104,6 +107,7 @@ fun computeDashboard(
     settings: DashboardSettings,
     now: Long,
     zone: ZoneId = ZoneId.systemDefault(),
+    supplies: List<Supply> = emptyList(),
 ): DashboardStats {
     val stock = articles.filter { it.status.inStock }
     val counted = sales.filter { it.counted }
@@ -142,6 +146,9 @@ fun computeDashboard(
         .sortedWith(compareByDescending<CategoryStats> { it.salesCount }.thenByDescending { it.averageNetCents })
 
     val delays = counted.mapNotNull(::daysToSell)
+    // Les fournitures sont une dépense du mois où elles sont payées (pochettes, matériel), hors coût des bijoux.
+    val monthSupplies = Supplies.spentCents(supplies, from = monthStart)
+    val totalSupplies = Supplies.spentCents(supplies)
     return DashboardStats(
         stockCount = stock.size,
         draftCount = stock.count { it.status == ArticleStatus.DRAFT },
@@ -150,15 +157,17 @@ fun computeDashboard(
         potentialMarginCents = stock.sumOf { it.marginCents },
         monthSalesCount = month.size,
         monthRevenueCents = month.sumOf { it.salePriceCents },
-        monthNetCents = month.sumOf { Finance.netCents(it, rate) },
+        monthNetCents = month.sumOf { Finance.netCents(it, rate) } - monthSupplies,
         totalSalesCount = counted.size,
         totalRevenueCents = counted.sumOf { it.salePriceCents },
-        totalNetCents = counted.sumOf { Finance.netCents(it, rate) },
+        totalNetCents = counted.sumOf { Finance.netCents(it, rate) } - totalSupplies,
         toShipCount = sales.count { it.shippingStatus == ShippingStatus.TO_SHIP },
         averageDaysToSell = if (delays.isEmpty()) null else delays.average(),
         stagnant = stagnant,
         categories = categories,
         undatedSalesCount = counted.count { !it.dateKnown },
         missingCostCount = articles.count { it.costCents == 0L && it.status != ArticleStatus.WITHDRAWN },
+        monthSuppliesCents = monthSupplies,
+        totalSuppliesCents = totalSupplies,
     )
 }

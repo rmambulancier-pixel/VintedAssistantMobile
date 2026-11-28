@@ -79,6 +79,21 @@ class FinanceAndDashboardTest {
     }
 
     @Test
+    fun suppliesAreDeductedFromNetProfit() {
+        val now = at(2026, 11, 15)
+        val sales = listOf(sale(2000, 500, at(2026, 11, 2)))
+        val supplies = listOf(
+            Supply(1, at(2026, 11, 3), "Pochettes", SupplyKind.PACKAGING, "", 30, 284, perParcel = true),
+            Supply(2, at(2026, 10, 3), "Fond photo", SupplyKind.PHOTO, "", 1, 500, perParcel = false),
+        )
+        val stats = computeDashboard(emptyList(), sales, DashboardSettings(0, 21, 10), now, zone, supplies)
+        assertEquals(1500L - 284, stats.monthNetCents)
+        assertEquals(1500L - 784, stats.totalNetCents)
+        assertEquals(284L, stats.monthSuppliesCents)
+        assertEquals(784L, stats.totalSuppliesCents)
+    }
+
+    @Test
     fun dashboardFindsStagnantOnlineArticles() {
         val now = at(2026, 11, 30)
         val old = Article(1, "Vieux", 500, 2000, ArticleStatus.ONLINE, 0, firstPublishedAt = at(2026, 11, 1))

@@ -55,15 +55,28 @@ object Fiscal {
         }
     }
 
-    data class Purchase(val date: LocalDate, val supplier: String, val ref: String, val itemsCents: Long, val shippingCents: Long, val feesCents: Long, val pieces: Int)
+    /**
+     * Ligne du registre des achats. [nature] : « Marchandises » (revendues) ou « Fournitures » (emballages,
+     * matériel) ; [detail] : ce qui a été acheté quand ce n'est pas une commande de marchandises.
+     */
+    data class Purchase(
+        val date: LocalDate, val supplier: String, val ref: String, val itemsCents: Long, val shippingCents: Long,
+        val feesCents: Long, val pieces: Int, val nature: String = "Marchandises", val detail: String = "",
+    )
 
-    /** Registre des achats de l'année : date, fournisseur, n° de commande, détail, montants. */
+    /** Un achat de fournitures, prêt pour le registre (montant payé, port compris). */
+    fun supplyLine(s: Supply): Purchase = Purchase(
+        Instant.ofEpochMilli(s.boughtAt).atZone(ZONE).toLocalDate(), s.supplier, "", s.amountCents, 0, 0, s.quantity,
+        "Fournitures", s.label + " (" + s.kind.label.lowercase() + ")",
+    )
+
+    /** Registre des achats de l'année : date, fournisseur, nature, détail, n° de commande, quantité, montants. */
     fun purchasesCsv(orders: List<Purchase>, year: Int): String = buildString {
-        append('﻿')
-        appendLine("Date;Fournisseur;N° de commande;Pièces;Marchandises (€);Port (€);Frais (€);Total (€)")
+        append('\uFEFF')
+        appendLine("Date;Fournisseur;Nature;Détail;N° de commande;Quantité;Prix (€);Port (€);Frais (€);Total (€)")
         orders.filter { it.date.year == year }.sortedBy { it.date }.forEach { o ->
             append(listOf(
-                csv(o.date.format(DATE)), csv(o.supplier), csv(o.ref), o.pieces.toString(),
+                csv(o.date.format(DATE)), csv(o.supplier), csv(o.nature), csv(o.detail), csv(o.ref), o.pieces.toString(),
                 euros(o.itemsCents), euros(o.shippingCents), euros(o.feesCents), euros(o.itemsCents + o.shippingCents + o.feesCents),
             ).joinToString(";")).append('\n')
         }

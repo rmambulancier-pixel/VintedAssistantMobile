@@ -389,7 +389,8 @@ private fun FiscalSection(onMessage: (String) -> Unit) {
                             o.itemsTotalCents, o.shippingCents, o.feesCents, o.items.sumOf { it.quantity },
                         )
                     }
-                    share("registre-des-achats-$year.csv", fr.vintedassistant.mobile.domain.Fiscal.purchasesCsv(orders, year))
+                    val supplies = c.supplies.items.first().map { fr.vintedassistant.mobile.domain.Fiscal.supplyLine(it) }
+                    share("registre-des-achats-$year.csv", fr.vintedassistant.mobile.domain.Fiscal.purchasesCsv(orders + supplies, year))
                 } catch (e: Exception) { onMessage("Export impossible.") }
             }
         }, modifier = Modifier.weight(1f)) { Text("Registre des achats") }

@@ -617,3 +617,21 @@ les trois méthodes, sauf une fois (méthode 2, 8,50 €).
   revendu, normal).
 - Hors série, après « Remplir » puis « Ajouter », la nouvelle annonce est reliée à sa fiche, seulement si la
   page est une annonce de l'utilisateur (boutons Modifier/Supprimer) au titre de la fiche.
+
+## 1.12.0 (28 novembre)
+
+- Fournitures (base v10, table `supplies`, migration automatique 9→10) : pochettes, étiquettes, matériel photo.
+  Montant payé port compris, quantité, type, fournisseur, date, option « une dans chaque colis ».
+  - Déduites du bénéfice net du mois où elles sont payées et du bénéfice depuis le début (tableau de bord,
+    widget, résumé du matin). La part de bénéfice des meilleurs produits reste calculée sur les ventes seules.
+  - Registre des achats : colonnes « Nature » (Marchandises / Fournitures) et « Détail » ajoutées.
+  - Stock estimé des fournitures « une par colis » : achetées moins une par vente comptée et datée depuis le
+    premier achat (annulations exclues). Estimation, une remise en main propre en consomme une à tort.
+    Alerte à 5 restantes.
+- « Achat à la main » devient « Saisir un achat » (marchandises à revendre, bijoux ou autres).
+- Prix (journal du 28/11, 1.11.2) : le portrait du champ montre un champ texte ordinaire (placeholder
+  « 0,00 € », gestionnaires onChange/onFocus/onBlur/onKeyDown). Toutes les tentatives après un « NaN € »
+  échouent ; les deux réussites (1.11.1 et 1.11.2) suivent un essai qui avait laissé le champ vide. Chaque
+  essai part désormais d'un champ vidé (méthode 2 avec "", puis focus/frappe/sortie si besoin) et relu vide
+  (`before` au journal). Nouvelle méthode 5 : focus, pause, frappe, pause, sortie. Une maquette React du champ
+  ne reproduit pas le bug (l'ancienne méthode y marche) : la cause exacte reste à confirmer par le journal.

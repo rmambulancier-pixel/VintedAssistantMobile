@@ -35,7 +35,8 @@ class VintedBoostApp : Application() {
                 container.articleRepository.sales,
                 container.purchaseRepository.orders,
                 container.settingsStore.settings,
-            ) { _, _, _, _ -> Unit }
+                container.supplies.items,
+            ) { _, _, _, _, _ -> Unit }
                 .debounce(2_000)
                 .collect { fr.vintedassistant.mobile.widget.SalesWidget.refresh(this@VintedBoostApp) }
         }
@@ -69,6 +70,8 @@ class AppContainer(context: Context) {
     val corrections = fr.vintedassistant.mobile.data.Corrections(articleRepository, purchaseRepository)
 
     val wishes = fr.vintedassistant.mobile.data.WishRepository(database, photoStore)
+
+    val supplies = fr.vintedassistant.mobile.data.SupplyRepository(database)
 
     val incidents = fr.vintedassistant.mobile.data.IncidentStore(context)
 

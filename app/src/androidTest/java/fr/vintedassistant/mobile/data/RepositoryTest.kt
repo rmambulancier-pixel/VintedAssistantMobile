@@ -812,4 +812,22 @@ class RepositoryTest {
         wishes.remove(saved.id)
         assertTrue(wishes.items.first().isEmpty())
     }
+
+    /** Fournitures : enregistrées, modifiées, supprimées ; la quantité et le montant sont gardés tels quels. */
+    @Test
+    fun suppliesSaveEditDelete() = runBlocking {
+        val supplies = SupplyRepository(db, clock = { now })
+        val s = fr.vintedassistant.mobile.domain.Supply(
+            0, now, "Pochettes à bulles 13×15", fr.vintedassistant.mobile.domain.SupplyKind.PACKAGING, "Nihaojewelry", 30, 284, perParcel = true,
+        )
+        val id = supplies.save(s)
+        val saved = supplies.items.first().single()
+        assertEquals(30, saved.quantity)
+        assertEquals(284L, saved.amountCents)
+        assertEquals(9L, saved.unitCents)
+        supplies.save(saved.copy(quantity = 40))
+        assertEquals(40, supplies.items.first().single().quantity)
+        supplies.delete(id)
+        assertTrue(supplies.items.first().isEmpty())
+    }
 }

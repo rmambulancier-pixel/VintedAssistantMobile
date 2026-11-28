@@ -62,6 +62,11 @@ fun PurchasesScreen(
     val repo = context.container().purchaseRepository
     val wishes by context.container().wishes.items.collectAsStateWithLifecycle(initialValue = emptyList())
     val orders by repo.orders.collectAsStateWithLifecycle(initialValue = null)
+    val supplies by context.container().supplies.items.collectAsStateWithLifecycle(initialValue = emptyList())
+    val sales by context.container().articleRepository.sales.collectAsStateWithLifecycle(initialValue = emptyList())
+    // null : fermé ; Supply avec id 0 : nouvel achat.
+    var supplyEdit by remember { mutableStateOf<fr.vintedassistant.mobile.domain.Supply?>(null) }
+    var supplyNew by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var linkFor by remember { mutableStateOf<PurchaseItem?>(null) }
     var missingFor by remember { mutableStateOf<PurchaseItem?>(null) }
@@ -227,18 +232,32 @@ fun PurchasesScreen(
         )
     }
 
+    if (supplyNew || supplyEdit != null) {
+        val close = { supplyNew = false; supplyEdit = null }
+        SupplyDialog(
+            initial = supplyEdit,
+            now = System.currentTimeMillis(),
+            onDismiss = close,
+            onSave = { sup -> close(); run("Enregistrement impossible.") { context.container().supplies.save(sup); onMessage("Fournitures enregistrées : ${sup.label}.") } },
+            onDelete = { sup -> close(); run("Suppression impossible.") { context.container().supplies.delete(sup.id) } },
+        )
+    }
+
     LazyColumn(modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         info?.let { msg -> item { fr.vintedassistant.mobile.ui.MessageCard(msg) { info = null } } }
         item {
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onOpenSupplier, modifier = Modifier.weight(1f)) { Text("Importer de Nihaojewelry") }
-                OutlinedButton(onClick = { manual = true }, modifier = Modifier.weight(1f)) { Text("Achat à la main") }
+                OutlinedButton(onClick = { manual = true }, modifier = Modifier.weight(1f)) { Text("Saisir un achat") }
             }
         }
         item {
             OutlinedButton(onClick = onOpenWishlist, modifier = Modifier.fillMaxWidth()) {
                 Text("★ À acheter plus tard (${wishes.count { it.boughtAt == null }})")
             }
+        }
+        item {
+            SuppliesCard(supplies, sales, onAdd = { supplyNew = true }, onEdit = { supplyEdit = it })
         }
         val list = orders
         if (list == null) return@LazyColumn
@@ -396,9 +415,14 @@ private fun ManualOrderDialog(onDismiss: () -> Unit, onSave: (ParsedOrder) -> Un
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Achat saisi à la main") },
+        title = { Text("Marchandises achetées à la main") },
         text = {
             Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "Ce que vous revendez : bijoux ou tout autre produit, d'un fournisseur ou d'ailleurs. " +
+                        "Pour les pochettes et le matériel, utilisez plutôt « Fournitures ».",
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 lines.forEachIndexed { i, l ->
                     SectionTitle("Produit ${i + 1}")
                     Field("Nom", l.name, { v -> lines[i] = l.copy(name = v) })
@@ -447,7 +471,7 @@ private fun ManualOrderDialog(onDismiss: () -> Unit, onSave: (ParsedOrder) -> Un
 /** Calendrier pour corriger la date d'une commande (midi, heure du téléphone). */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun OrderDateDialog(initial: Long, onDismiss: () -> Unit, onPick: (Long) -> Unit) {
+internal fun OrderDateDialog(initial: Long, onDismiss: () -> Unit, onPick: (Long) -> Unit) {
     val zone = java.time.ZoneId.systemDefault()
     val utcMidnight = java.time.Instant.ofEpochMilli(initial).atZone(zone).toLocalDate()
         .atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()

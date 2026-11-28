@@ -48,6 +48,7 @@ class MainViewModel(
     private val settingsStore: SettingsStore,
     private val assistant: ListingAssistant,
     private val purchases: PurchaseRepository,
+    private val supplies: fr.vintedassistant.mobile.data.SupplyRepository,
 ) : ViewModel() {
 
     private val clock = MutableStateFlow(System.currentTimeMillis())
@@ -72,8 +73,8 @@ class MainViewModel(
     val exportReport: StateFlow<ExportReport?> = _exportReport.asStateFlow()
 
     val dashboard: StateFlow<DashboardStats?> =
-        combine(repository.articles, repository.sales, settingsStore.settings, clock) { a, s, st, now ->
-            computeDashboard(a, s, st.dashboard, now)
+        combine(repository.articles, repository.sales, settingsStore.settings, clock, supplies.items) { a, s, st, now, sup ->
+            computeDashboard(a, s, st.dashboard, now, supplies = sup)
         }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Stock pièce par pièce : achats fournisseur croisés avec les fiches. */
@@ -355,7 +356,7 @@ class MainViewModel(
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as VintedBoostApp
                 val c = app.container
-                MainViewModel(app.applicationContext, c.articleRepository, c.settingsStore, c.assistant, c.purchaseRepository)
+                MainViewModel(app.applicationContext, c.articleRepository, c.settingsStore, c.assistant, c.purchaseRepository, c.supplies)
             }
         }
     }

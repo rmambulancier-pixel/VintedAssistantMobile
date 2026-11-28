@@ -110,7 +110,7 @@ class ShippingReminderWorker(context: Context, params: WorkerParameters) : Corou
         } else {
             val stock = fr.vintedassistant.mobile.domain.StockLedger.build(orders, articles)
             val plan = fr.vintedassistant.mobile.domain.RepublishPlanner.plan(articles, repo.republishedTimestamps.first(), settings.republish, now)
-            val dashboard = fr.vintedassistant.mobile.domain.computeDashboard(articles, sales, settings.dashboard, now)
+            val dashboard = fr.vintedassistant.mobile.domain.computeDashboard(articles, sales, settings.dashboard, now, supplies = container.supplies.items.first())
             val favorites = repo.notices.first().count {
                 !it.handled && it.kind == fr.vintedassistant.mobile.domain.VintedEventKind.FAVORITE && it.postedAt > now - 2 * fr.vintedassistant.mobile.domain.DAY_MS
             }
